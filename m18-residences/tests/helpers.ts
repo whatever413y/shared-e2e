@@ -1,0 +1,63 @@
+import { expect, type Locator, type Page } from '@playwright/test';
+import { ports } from '../env.mjs';
+
+export const adminUrl = `http://localhost:${ports.admin}/`;
+export const tenantUrl = (accountId: string) => `http://localhost:${ports.tenant}/#/${encodeURIComponent(accountId)}`;
+
+/** Test data shared by the specs (tenant names are uppercase: the tenant login uppercases what it sends). */
+export const data = {
+  room: 'E2E ROOM 101',
+  rent: 5000,
+  tenant: 'E2E TENANT',
+  prevReading: 100,
+  currReading: 150, // 50 kWh at the default rate of 17 = 850
+  charge: { amount: 200, description: 'Water' },
+  expectedTotal: '6,050', // 5000 room + 850 electricity + 200 water
+};
+
+/**
+ * Something on the page showing [text]. Flutter exposes a widget's text either as DOM text or as the
+ * accessible name (aria-label) of its semantics node (e.g. a card becomes `group "E2E ROOM 101 Rent: ₱5000"`).
+ */
+export function showing(page: Page, text: string): Locator {
+  const attr = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return page.getByText(text).or(page.locator(`[aria-label*="${attr}"]`)).first();
+}
+
+/** All text a semantics node shows: its DOM text plus its own and its descendants' aria-labels. */
+export function semanticsText(scope: Locator): Promise<string> {
+  return scope.evaluate((el) =>
+    [el.textContent ?? '', ...[el, ...Array.from(el.querySelectorAll('[aria-label]'))].map((e) => e.getAttribute('aria-label') ?? '')].join(' '),
+  );
+}
+
+/** The real <input> of a Flutter text field; the semantics identifier sits on its wrapper node. */
+export function field(page: Page, testId: string): Locator {
+  return page.getByTestId(testId).locator('input, textarea').first();
+}
+
+/** Types into a Flutter text field the way a user does (click, then keystrokes) and checks the value landed. */
+export async function typeInto(page: Page, testId: string, text: string | number): Promise<void> {
+  const input = field(page, testId);
+  await input.click();
+  await input.fill('');
+  await input.pressSequentially(String(text));
+  await expect(input).toHaveValue(String(text));
+}
+
+/** Opens a Flutter dropdown by test id and picks the option with the given text. */
+export async function pickOption(page: Page, testId: string, optionText: string): Promise<void> {
+  await page.getByTestId(testId).click();
+  const option = page
+    .getByRole('menuitem', { name: optionText })
+    .or(page.getByRole('option', { name: optionText }))
+    .or(page.getByRole('button', { name: optionText }));
+  await option.last().click();
+}
+
+export async function loginAsAdmin(page: Page, username: string, password: string): Promise<void> {
+  await page.goto(adminUrl);
+  await typeInto(page, 'admin-username', username);
+  await typeInto(page, 'admin-password', password);
+  await page.getByTestId('admin-login-submit').click();
+}

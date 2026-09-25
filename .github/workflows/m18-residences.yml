@@ -1,0 +1,80 @@
+name: m18-residences e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_ref: { description: m18-residences-server ref, default: main }
+      admin_ref: { description: M18-Residences-Admin ref, default: main }
+      tenant_ref: { description: M18-Residences ref, default: main }
+      shared_ref: { description: shared-packages ref, default: main }
+  workflow_call:
+    inputs:
+      server_ref: { type: string, default: main }
+      admin_ref: { type: string, default: main }
+      tenant_ref: { type: string, default: main }
+      shared_ref: { type: string, default: main }
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: m18_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/m18_e2e
+    steps:
+      # Sibling checkouts, the layout env.mjs expects (<workspace>/<repo>).
+      - uses: actions/checkout@v7
+        with: { repository: whatever413y/shared-e2e, path: shared-e2e }
+      - uses: actions/checkout@v7
+        with: { repository: whatever413y/m18-residences-server, ref: '${{ inputs.server_ref }}', path: m18-residences-server }
+      - uses: actions/checkout@v7
+        with: { repository: whatever413y/M18-Residences-Admin, ref: '${{ inputs.admin_ref }}', path: M18-Residences-Admin }
+      - uses: actions/checkout@v7
+        with: { repository: whatever413y/M18-Residences, ref: '${{ inputs.tenant_ref }}', path: M18-Residences }
+      - uses: actions/checkout@v7
+        with: { repository: whatever413y/shared-packages, ref: '${{ inputs.shared_ref }}', path: shared-packages }
+
+      - name: Point both apps at the checked-out m18_shared (instead of the pinned tag)
+        run: |
+          for app in M18-Residences-Admin M18-Residences; do
+            printf 'dependency_overrides:\n  m18_shared:\n    path: ../shared-packages/packages/m18_shared\n' > "$app/pubspec_overrides.yaml"
+          done
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            m18-residences-server -> target/e2e
+            m18-residences-server/migration -> target
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: shared-e2e/m18-residences/package-lock.json
+
+      - run: npm ci
+        working-directory: shared-e2e/m18-residences
+      - run: npm run e2e
+        working-directory: shared-e2e/m18-residences
+        env:
+          CI: 'true'
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            shared-e2e/m18-residences/playwright-report
+            shared-e2e/m18-residences/test-results
