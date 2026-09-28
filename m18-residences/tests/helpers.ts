@@ -40,7 +40,9 @@ export function field(page: Page, testId: string): Locator {
 export async function typeInto(page: Page, testId: string, text: string | number): Promise<void> {
   const input = field(page, testId);
   await input.click();
-  await input.fill('');
+  // Flutter ignores DOM-level fill(''); clear any pre-filled value (e.g. a "0" reading) via real keystrokes.
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.press('Backspace');
   await input.pressSequentially(String(text));
   await expect(input).toHaveValue(String(text));
 }

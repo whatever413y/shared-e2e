@@ -14,7 +14,7 @@ export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
   workers: 1, // the specs share one database and build on each other's data
-  retries: process.env.CI ? 1 : 0,
+  retries: 0, // the specs build on each other's data; a retry would collide with its own first attempt (unique room/tenant names)
   timeout: 120_000,
   expect: { timeout: 20_000 },
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
