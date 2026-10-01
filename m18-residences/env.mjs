@@ -8,9 +8,9 @@ const workspace = path.resolve(here, '..', '..'); // the folder holding all the 
 
 /** Sibling repo checkouts; override with env vars when they live elsewhere (CI). */
 export const repos = {
-  server: process.env.M18_SERVER_DIR ?? path.join(workspace, 'm18-residences-server'),
-  admin: process.env.M18_ADMIN_DIR ?? path.join(workspace, 'M18-Residences-Admin'),
-  tenant: process.env.M18_TENANT_DIR ?? path.join(workspace, 'M18-Residences'),
+  server: process.env.M18_RESIDENCES_SERVER_DIR ?? path.join(workspace, 'm18-residences-server'),
+  admin: process.env.M18_RESIDENCES_ADMIN_DIR ?? path.join(workspace, 'M18-Residences-Admin'),
+  tenant: process.env.M18_RESIDENCES_TENANT_DIR ?? path.join(workspace, 'M18-Residences'),
 };
 
 /** Dedicated e2e ports, so a running dev setup (50000-50002) is never touched. */

@@ -42,10 +42,10 @@ jobs:
       - uses: actions/checkout@v7
         with: { repository: whatever413y/shared-packages, ref: '${{ inputs.shared_ref }}', path: shared-packages }
 
-      - name: Point both apps at the checked-out m18_shared (instead of the pinned tag)
+      - name: Point both apps at the checked-out m18_residences_shared (instead of the pinned tag)
         run: |
           for app in M18-Residences-Admin M18-Residences; do
-            printf 'dependency_overrides:\n  m18_shared:\n    path: ../shared-packages/packages/m18_shared\n' > "$app/pubspec_overrides.yaml"
+            printf 'dependency_overrides:\n  m18_residences_shared:\n    path: ../shared-packages/packages/m18_residences_shared\n' > "$app/pubspec_overrides.yaml"
           done
 
       - uses: dtolnay/rust-toolchain@stable
