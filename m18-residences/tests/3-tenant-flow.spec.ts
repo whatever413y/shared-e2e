@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { data, semanticsText, tenantUrl } from './helpers';
+import { data, legacyTenantUrl, semanticsText, tenantUrl } from './helpers';
 
 // Runs after 2-admin-flow (files run in name order with one worker) and checks the tenant sees that bill.
 test('tenant opens their link, sees the same total, and opens the receipt the admin attached', async ({ page }) => {
@@ -29,4 +29,11 @@ test('an unknown account ID is rejected with the existing message', async ({ pag
 
   // Shown under the field (Flutter also announces it to screen readers, hence the scoped locator).
   await expect(page.getByTestId('tenant-account-id').getByText('Account ID not found.')).toBeVisible();
+});
+
+test('an old #/ tenant link still prefills the account ID', async ({ page }) => {
+  await page.goto(legacyTenantUrl(data.tenant));
+  const accountId = page.getByTestId('tenant-account-id').locator('input').first();
+  await accountId.focus();
+  await expect(accountId).toHaveValue(data.tenant);
 });

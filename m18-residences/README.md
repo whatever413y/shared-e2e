@@ -25,7 +25,7 @@ Each run's D1 and R2 live in `.wrangler-e2e/` (gitignored, wiped by `prepare.mjs
 
 ## How it works
 
-- `prepare.mjs` runs first (Playwright starts web servers before `globalSetup`): creates a fresh local D1 with the server's migrations (`wrangler d1 migrations apply --local --persist-to`), builds the Worker (`worker-build --release`) and builds both apps with `--release --dart-define=API_URL=http://localhost:51000/api --dart-define=E2E=true`. Playwright then starts `wrangler dev` (the pinned wrangler in `package.json`) on 51000 and serves the app builds on 51001/51002.
+- `prepare.mjs` runs first (Playwright starts web servers before `globalSetup`): creates a fresh local D1 with the server's migrations (`wrangler d1 migrations apply --local --persist-to`), builds the Worker (`worker-build --release`) and builds both apps with `--release --dart-define=API_URL=http://localhost:51000/api --dart-define=E2E=true`. Playwright then starts `wrangler dev` (the pinned wrangler in `package.json`) for the API on 51000 and, with each app's own `wrangler.jsonc`, for the app builds on 51001/51002 (as in production: unknown paths serve `index.html`, so tenant links like `/NAME` work).
 - `E2E=true` makes the apps enable Flutter's accessibility tree, which is what Playwright reads. Tests find widgets by role/label or by `Semantics(identifier:)` ids, exposed as the `flt-semantics-identifier` attribute (`testIdAttribute`).
 - Specs run in order with one worker: `1-auth` → `2-admin-flow` (room → tenant → reading → bill, then a ~9 MB photo attached as the receipt: the admin app must shrink it and send WebP) → `3-tenant-flow` (the tenant sees that bill and opens the receipt through its signed link).
 

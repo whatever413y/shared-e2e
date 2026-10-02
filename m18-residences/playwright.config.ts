@@ -2,12 +2,16 @@ import { defineConfig } from '@playwright/test';
 import path from 'node:path';
 import { ports, repos, serverConfig, serverVarsFile, statePath, wrangler } from './env.mjs';
 
-/** Serves a Flutter release build; the apps use hash routing, so no SPA fallback is needed. */
+/**
+ * Serves a Flutter release build the way production does: `wrangler dev` with the app's own wrangler.jsonc
+ * (static assets, every unknown path answered with index.html, so tenant links like /NAME work).
+ */
 const staticSite = (dir: string, port: number) => ({
-  command: `npx http-server "${dir}" -p ${port} -c-1 -s`,
+  command: `node "${wrangler}" dev --config "${path.join(dir, 'wrangler.jsonc')}" --port ${port} --ip 127.0.0.1 --inspector-port ${port + 9} --persist-to "${path.join(statePath, `site-${port}`)}" --show-interactive-dev-session=false`,
+  cwd: dir,
   url: `http://127.0.0.1:${port}`, // readiness probe over IPv4 (localhost may resolve to ::1 first); tests browse via localhost
   reuseExistingServer: false,
-  timeout: 60_000,
+  timeout: 120_000,
 });
 
 export default defineConfig({
@@ -34,7 +38,7 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 300_000, // starts with `worker-build` (incremental after prepare.mjs)
     },
-    staticSite(path.join(repos.admin, 'build', 'web'), ports.admin),
-    staticSite(path.join(repos.tenant, 'build', 'web'), ports.tenant),
+    staticSite(repos.admin, ports.admin),
+    staticSite(repos.tenant, ports.tenant),
   ],
 });

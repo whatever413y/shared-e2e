@@ -4,7 +4,9 @@ import zlib from 'node:zlib';
 import { ports } from '../env.mjs';
 
 export const adminUrl = `http://localhost:${ports.admin}/`;
-export const tenantUrl = (accountId: string) => `http://localhost:${ports.tenant}/#/${encodeURIComponent(accountId)}`;
+export const tenantUrl = (accountId: string) => `http://localhost:${ports.tenant}/${encodeURIComponent(accountId)}`;
+/** The `#/NAME` form tenant links had before the app moved to path URLs; still prefills the account ID. */
+export const legacyTenantUrl = (accountId: string) => `http://localhost:${ports.tenant}/#/${encodeURIComponent(accountId)}`;
 
 /** Test data shared by the specs (tenant names are uppercase: the tenant login uppercases what it sends). */
 export const data = {
