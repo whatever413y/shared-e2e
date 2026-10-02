@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       server_ref: { description: m18-residences-server ref, default: main }
-      admin_ref: { description: M18-Residences-Admin ref, default: main }
-      tenant_ref: { description: M18-Residences ref, default: main }
+      admin_ref: { description: m18-residences-admin ref, default: main }
+      tenant_ref: { description: m18-residences-tenant ref, default: main }
       shared_ref: { description: shared-packages ref (ignored when pinned), default: main }
       pinned: { description: 'Use the m18_residences_shared tag each app pins (what deploys ship)', type: boolean, default: false }
       e2e_ref: { description: shared-e2e ref (the specs), default: main }
@@ -29,9 +29,9 @@ jobs:
       - uses: actions/checkout@v7
         with: { repository: whatever413y/m18-residences-server, ref: '${{ inputs.server_ref }}', path: m18-residences-server }
       - uses: actions/checkout@v7
-        with: { repository: whatever413y/M18-Residences-Admin, ref: '${{ inputs.admin_ref }}', path: M18-Residences-Admin }
+        with: { repository: whatever413y/m18-residences-admin, ref: '${{ inputs.admin_ref }}', path: m18-residences-admin }
       - uses: actions/checkout@v7
-        with: { repository: whatever413y/M18-Residences, ref: '${{ inputs.tenant_ref }}', path: M18-Residences }
+        with: { repository: whatever413y/m18-residences-tenant, ref: '${{ inputs.tenant_ref }}', path: m18-residences-tenant }
 
       # Unpinned: both apps build against one checkout of m18_residences_shared. Pinned: each app resolves the tag
       # its pubspec.yaml names, exactly as the deploy builds do.
@@ -41,7 +41,7 @@ jobs:
       - name: Point both apps at the checked-out m18_residences_shared (instead of the pinned tag)
         if: ${{ !inputs.pinned }}
         run: |
-          for app in M18-Residences-Admin M18-Residences; do
+          for app in m18-residences-admin m18-residences-tenant; do
             printf 'dependency_overrides:\n  m18_residences_shared:\n    path: ../shared-packages/packages/m18_residences_shared\n' > "$app/pubspec_overrides.yaml"
           done
 
@@ -73,7 +73,7 @@ jobs:
       - name: Which m18_residences_shared each app built against
         if: ${{ always() }}
         run: |
-          for app in M18-Residences-Admin M18-Residences; do
+          for app in m18-residences-admin m18-residences-tenant; do
             echo "== $app"; grep -A4 '^  m18_residences_shared:' "$app/pubspec.lock" || echo "(no lock)"
           done
 

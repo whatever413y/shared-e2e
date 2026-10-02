@@ -1,6 +1,6 @@
 # M18 Residences e2e
 
-Drives the real stack in Google Chrome: the API Worker (`m18-residences-server`, run by `wrangler dev` in the real Workers runtime), the admin app (`M18-Residences-Admin`) and the tenant app (`M18-Residences`), against a throwaway local D1 database and R2 bucket (`.wrangler-e2e/`).
+Drives the real stack in Google Chrome: the API Worker (`m18-residences-server`, run by `wrangler dev` in the real Workers runtime), the admin app (`m18-residences-admin`) and the tenant app (`m18-residences-tenant`), against a throwaway local D1 database and R2 bucket (`.wrangler-e2e/`).
 
 | | Port |
 |---|---|
