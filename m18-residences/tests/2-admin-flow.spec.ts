@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { admin } from '../env.mjs';
-import { data, loginAsAdmin, pickOption, semanticsText, showing, typeInto } from './helpers';
+import { data, loginAsAdmin, noisePng, pickOption, semanticsText, showing, typeInto } from './helpers';
 
 // One admin session builds the data the tenant spec checks: room → tenant → reading → bill.
 test.describe.configure({ mode: 'serial' });
 
-test('admin creates a room, tenant, reading and bill; the bill total is computed by the server', async ({ page }) => {
+test('admin creates a room, tenant, reading and bill, then attaches a receipt converted to WebP in the browser', async ({ page }) => {
   await loginAsAdmin(page, admin.username, admin.password);
   await expect(showing(page, 'Welcome Admin!')).toBeVisible();
 
@@ -43,6 +43,8 @@ test('admin creates a room, tenant, reading and bill; the bill total is computed
 
   await test.step('bill', async () => {
     await page.getByRole('button', { name: 'Billing' }).click();
+    // The button does nothing until the billing data has loaded, so wait for the (still empty) list.
+    await expect(showing(page, 'No bills found')).toBeVisible();
     await page.getByRole('button', { name: 'Generate New Bill' }).click();
     await pickOption(page, 'bill-tenant', data.tenant);
     // Room charges (the room's rent) and electric charges (50 kWh × rate 17) fill in by themselves and are
@@ -52,5 +54,26 @@ test('admin creates a room, tenant, reading and bill; the bill total is computed
     await page.getByTestId('bill-save').click();
 
     await expect.poll(() => semanticsText(page.getByTestId(`bill-total-${data.tenant}`))).toContain(data.expectedTotal);
+  });
+
+  await test.step('receipt', async () => {
+    const photo = noisePng(2000, 1500); // ~9 MB as PNG
+    await page.getByTestId(`bill-edit-${data.tenant}`).click();
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByTestId('bill-attach-receipt').click();
+    await (await chooser).setFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: photo });
+    // Shrunk to 1600 px and re-encoded as WebP before upload; the dialog shows the new name and size.
+    await expect.poll(() => semanticsText(page.getByTestId('bill-receipt-file'))).toContain('receipt.webp');
+
+    const upload = page.waitForResponse((r) => r.url().endsWith('/upload') && r.request().method() === 'PUT');
+    await page.getByTestId('bill-save').click();
+    const response = await upload;
+    expect(response.status()).toBe(200);
+    const sent = response.request().postDataBuffer() ?? Buffer.alloc(0);
+    expect(sent.includes(Buffer.from('Content-Type: image/webp', 'utf8')) || sent.includes(Buffer.from('content-type: image/webp', 'utf8'))).toBe(true);
+    expect(sent.length).toBeLessThan(photo.length / 2);
+    const bill = await response.json();
+    expect(bill.bill.paid).toBe(true);
+    expect(bill.bill.receipt_url).toMatch(/^\d+-r\d+$/);
   });
 });

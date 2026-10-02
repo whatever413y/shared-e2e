@@ -1,16 +1,16 @@
 // Runs before `playwright test` (Playwright starts its web servers before any globalSetup, so the
-// builds must already exist): fresh e2e schema, server build, and release web builds of both apps.
+// builds must already exist): fresh local D1/R2 state, the API Worker build, and release web builds of both apps.
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import net from 'node:net';
-import path from 'node:path';
-import { apiUrl, e2eDatabaseUrl, ports, repos } from './env.mjs';
+import { apiUrl, ports, repos, serverConfig, serverVars, serverVarsFile, statePath, wrangler } from './env.mjs';
 
 const isWindows = process.platform === 'win32';
 
-function run(title, command, args, cwd, env = {}) {
+function run(title, command, args, cwd) {
   console.log(`\n▶ ${title}\n  (${cwd}) ${command} ${args.join(' ')}`);
-  // flutter is a .bat on Windows, which needs a shell; cargo is a plain executable.
-  const result = spawnSync(command, args, { cwd, stdio: 'inherit', shell: isWindows && command === 'flutter', env: { ...process.env, ...env } });
+  // flutter is a .bat on Windows, which needs a shell; node and worker-build are plain executables.
+  const result = spawnSync(command, args, { cwd, stdio: 'inherit', shell: isWindows && command === 'flutter' });
   if (result.error) throw result.error;
   if (result.status !== 0) {
     console.error(`\n✖ ${title} failed (exit ${result.status})`);
@@ -31,10 +31,12 @@ function assertPortFree(port) {
 
 for (const port of Object.values(ports)) await assertPortFree(port);
 
-// DATABASE_URL is passed through the environment (never the dev .env): the migration CLI only falls back
-// to ../.env when the variable is unset, and e2eDatabaseUrl() refuses anything but .../m18_e2e.
-const databaseUrl = e2eDatabaseUrl();
-run('Reset the m18_e2e schema', 'cargo', ['run', '--quiet', '--', 'fresh'], path.join(repos.server, 'migration'), { DATABASE_URL: databaseUrl });
+// A throwaway local D1 + R2 (wrangler's --persist-to), never the dev state in the server's .wrangler/.
+fs.rmSync(statePath, { recursive: true, force: true });
+fs.mkdirSync(statePath, { recursive: true });
+const vars = Object.entries(serverVars()).map(([key, value]) => `${key}="${value}"`);
+fs.writeFileSync(serverVarsFile, `${vars.join('\n')}\n`);
+run('Create the e2e database (D1 migrations)', 'node', [wrangler, 'd1', 'migrations', 'apply', 'm18-residences', '--local', '--config', serverConfig, '--persist-to', statePath], repos.server);
 
 // `--db-only` (npm run test:fresh): fresh data for re-running the specs against the last builds.
 if (process.argv.includes('--db-only')) {
@@ -42,10 +44,13 @@ if (process.argv.includes('--db-only')) {
   process.exit(0);
 }
 
-// Separate target dir: a running dev server keeps target/debug's exe locked on Windows.
-run('Build the API server', 'cargo', ['build', '--target-dir', path.join('target', 'e2e')], repos.server);
+// wrangler dev runs the same build again on start; doing it here first fails fast with the compiler output.
+run('Build the API Worker', 'worker-build', ['--release'], repos.server);
 
-for (const [name, dir] of [['admin', repos.admin], ['tenant', repos.tenant]]) {
+for (const [name, dir] of [
+  ['admin', repos.admin],
+  ['tenant', repos.tenant],
+]) {
   run(`Build the ${name} app (release, e2e semantics on)`, 'flutter', [
     'build',
     'web',

@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 import path from 'node:path';
-import { ports, repos, serverEnv, serverExe } from './env.mjs';
+import { ports, repos, serverConfig, serverVarsFile, statePath, wrangler } from './env.mjs';
 
 /** Serves a Flutter release build; the apps use hash routing, so no SPA fallback is needed. */
 const staticSite = (dir: string, port: number) => ({
@@ -27,11 +27,12 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `"${serverExe}"`,
+      // The API Worker in the real Workers runtime (workerd), with the run's local D1 + R2 and e2e config.
+      command: `node "${wrangler}" dev --config "${serverConfig}" --port ${ports.api} --ip 127.0.0.1 --persist-to "${statePath}" --env-file "${serverVarsFile}" --inspector-port ${ports.api + 9} --show-interactive-dev-session=false`,
+      cwd: repos.server,
       url: `http://127.0.0.1:${ports.api}/health`,
-      env: serverEnv(),
       reuseExistingServer: false,
-      timeout: 60_000,
+      timeout: 300_000, // starts with `worker-build` (incremental after prepare.mjs)
     },
     staticSite(path.join(repos.admin, 'build', 'web'), ports.admin),
     staticSite(path.join(repos.tenant, 'build', 'web'), ports.tenant),

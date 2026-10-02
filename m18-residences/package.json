@@ -2,7 +2,7 @@
   "name": "m18-residences-e2e",
   "private": true,
   "type": "module",
-  "description": "Browser end-to-end tests for M18 Residences: Rust API + admin and tenant Flutter web apps.",
+  "description": "Browser end-to-end tests for M18 Residences: the API Worker (wrangler dev, local D1 + R2) and the admin and tenant Flutter web apps.",
   "scripts": {
     "prepare-env": "node prepare.mjs",
     "test": "playwright test",
@@ -11,6 +11,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
-    "http-server": "14.1.1"
+    "http-server": "14.1.1",
+    "wrangler": "4.145.0"
   }
 }

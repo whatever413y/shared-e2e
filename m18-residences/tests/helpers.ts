@@ -1,4 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import { ports } from '../env.mjs';
 
 export const adminUrl = `http://localhost:${ports.admin}/`;
@@ -62,4 +64,32 @@ export async function loginAsAdmin(page: Page, username: string, password: strin
   await typeInto(page, 'admin-username', username);
   await typeInto(page, 'admin-password', password);
   await page.getByTestId('admin-login-submit').click();
+}
+
+/**
+ * A noisy RGB PNG of the given size (noise barely compresses, so it is big: a realistic phone-photo-sized upload
+ * that the admin app must shrink and re-encode as WebP before sending).
+ */
+export function noisePng(width: number, height: number): Buffer {
+  const raw = crypto.randomBytes((width * 3 + 1) * height);
+  for (let y = 0; y < height; y++) raw[y * (width * 3 + 1)] = 0; // each row's filter byte: none
+  const chunk = (type: string, body: Buffer) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(body.length, 0);
+    head.write(type, 4, 'ascii');
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(zlib.crc32(Buffer.concat([Buffer.from(type, 'ascii'), body])), 0);
+    return Buffer.concat([head, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // colour type: RGB
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
 }

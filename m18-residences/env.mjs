@@ -1,5 +1,4 @@
 // Shared settings for prepare.mjs and playwright.config.ts.
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,43 +24,21 @@ export const admin = {
 
 export const jwtSecret = process.env.E2E_JWT_SECRET ?? 'e2e-jwt-secret-not-for-production';
 
-export const serverExe = path.join(repos.server, 'target', 'e2e', 'debug', process.platform === 'win32' ? 'm18-residences-server.exe' : 'm18-residences-server');
+/** Local D1 + R2 state for the run; wiped by prepare.mjs, so nothing from dev (`.wrangler/state`) is touched. */
+export const statePath = path.join(here, '.wrangler-e2e');
 
-/**
- * Database the e2e run wipes and re-migrates. E2E_DATABASE_URL, or the server's .env DATABASE_URL with the
- * database swapped to m18_e2e. Anything that does not end in /m18_e2e is refused, so a dev DB is never wiped.
- */
-export function e2eDatabaseUrl() {
-  let url = process.env.E2E_DATABASE_URL;
-  if (!url) {
-    const envFile = path.join(repos.server, '.env');
-    const line = fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf8').split(/\r?\n/).find((l) => l.startsWith('DATABASE_URL=')) : undefined;
-    if (!line) throw new Error(`Set E2E_DATABASE_URL, or add DATABASE_URL to ${envFile}`);
-    const parsed = new URL(line.slice('DATABASE_URL='.length).trim().replace(/^"|"$/g, ''));
-    parsed.pathname = '/m18_e2e';
-    parsed.search = '';
-    url = parsed.toString();
-  }
-  if (!new URL(url).pathname.endsWith('/m18_e2e')) {
-    throw new Error(`Refusing to use ${new URL(url).pathname} for e2e: the database must be named m18_e2e (it is wiped on every run).`);
-  }
-  return url;
-}
+/** The API's configuration for the run (written to an env file for `wrangler dev --env-file`). */
+export const serverVarsFile = path.join(statePath, 'e2e.vars');
 
-/** Environment for the API server under test. */
-export function serverEnv() {
+export function serverVars() {
   return {
-    PORT: String(ports.api),
-    DATABASE_URL: e2eDatabaseUrl(),
-    LOCALHOST_URL: `http://localhost:${ports.admin},http://localhost:${ports.tenant}`,
-    PRODUCTION_URL: '',
     JWT_SECRET: jwtSecret,
     ADMIN_USERNAME: admin.username,
     ADMIN_PASSWORD: admin.password,
-    // Dummy R2 settings: the server only needs them to start; the e2e flows never upload receipts.
-    R2_ENDPOINT: 'https://example.invalid',
-    R2_BUCKET_NAME: 'e2e',
-    R2_ACCESS_KEY_ID: 'e2e',
-    R2_SECRET_ACCESS_KEY: 'e2e',
+    ALLOWED_ORIGINS: `http://localhost:${ports.admin},http://localhost:${ports.tenant}`,
   };
 }
+
+/** The wrangler this suite pins (package.json), run with node so no .cmd shim is involved on Windows. */
+export const wrangler = path.join(here, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
+export const serverConfig = path.join(repos.server, 'wrangler.jsonc');
