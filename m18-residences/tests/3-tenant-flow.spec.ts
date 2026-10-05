@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { data, legacyTenantUrl, semanticsText, tenantUrl } from './helpers';
 
 // Runs after 2-admin-flow (files run in name order with one worker) and checks the tenant sees that bill.
-test('tenant opens their link, sees the same total, and opens the receipt the admin attached', async ({ page }) => {
+test('tenant opens their link, sees the same total and Paid, and opens the receipt the admin attached', async ({ page }) => {
   await page.goto(tenantUrl(data.tenant));
 
   // Flutter web only mirrors a field's text into its accessibility <input> while the field is focused.
@@ -16,7 +16,11 @@ test('tenant opens their link, sees the same total, and opens the receipt the ad
   // The bill's page (opened from the summary card) has the receipt link; it fetches a signed link, then the
   // image loads from the API's /api/files route.
   await page.getByTestId('tenant-latest-total').click();
-  const file = page.waitForResponse((r) => r.url().includes('/api/files/'));
+  // Paid (the admin attached a receipt): the payment can no longer be changed, but is still there to view.
+  await expect.poll(() => semanticsText(page.getByTestId('tenant-bill-status'))).toContain('Paid');
+  await expect(page.getByTestId('tenant-upload-payment')).toHaveCount(0);
+  await expect(page.getByTestId('tenant-payment-link')).toBeVisible();
+  const file = page.waitForResponse((r) => r.url().includes('/api/files/receipts/'));
   await page.getByTestId('tenant-receipt-link').click();
   const response = await file;
   expect(response.status()).toBe(200);

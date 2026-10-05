@@ -69,6 +69,17 @@ export async function pickOption(page: Page, testId: string, optionText: string)
   await option.last().click();
 }
 
+/** Logs in to the tenant app through the tenant's link and waits for the latest bill's total. */
+export async function loginAsTenant(page: Page): Promise<void> {
+  await page.goto(tenantUrl(data.tenant));
+  // Flutter web only mirrors a field's text into its accessibility <input> while the field is focused.
+  const accountId = page.getByTestId('tenant-account-id').locator('input').first();
+  await accountId.focus();
+  await expect(accountId).toHaveValue(data.tenant);
+  await page.getByTestId('tenant-login-submit').click();
+  await expect.poll(() => semanticsText(page.getByTestId('tenant-latest-total'))).toContain(data.expectedTotal);
+}
+
 export async function loginAsAdmin(page: Page, username: string, password: string): Promise<void> {
   await page.goto(adminUrl);
   await typeInto(page, 'admin-username', username);

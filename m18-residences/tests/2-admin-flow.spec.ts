@@ -1,11 +1,14 @@
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, type Response, test } from '@playwright/test';
 import { admin } from '../env.mjs';
-import { data, loginAsAdmin, noisePng, pickOption, semanticsText, showing, typeInto } from './helpers';
+import { data, loginAsAdmin, loginAsTenant, noisePng, pickOption, semanticsText, showing, typeInto } from './helpers';
 
 // One admin session builds the data the tenant spec checks: room → tenant → reading → bill.
 test.describe.configure({ mode: 'serial' });
 
-test('admin creates a room, tenant, reading and a bill with a WebP receipt, replaces the receipt and a payment QR code', async ({ page }) => {
+test('admin creates a room, tenant, reading and a bill with a payment, the tenant replaces the payment, the admin attaches and replaces the WebP receipt and a payment QR code', async ({
+  page,
+  browser,
+}) => {
   await loginAsAdmin(page, admin.username, admin.password);
   await expect(showing(page, 'Welcome Admin!')).toBeVisible();
 
@@ -41,32 +44,38 @@ test('admin creates a room, tenant, reading and a bill with a WebP receipt, repl
     await page.getByRole('button', { name: 'Back' }).click();
   });
 
-  /** Picks [photo] with the bill dialog's receipt button and waits until it is converted to WebP. */
-  async function attachReceipt(photo: Buffer, name: string) {
+  /** Picks [photo] with the `bill-attach-<kind>` button and waits until it is converted to WebP. */
+  async function attachFile(kind: 'receipt' | 'payment', photo: Buffer, name: string) {
     const chooser = page.waitForEvent('filechooser');
-    await page.getByTestId('bill-attach-receipt').click();
+    await page.getByTestId(`bill-attach-${kind}`).click();
     await (await chooser).setFiles({ name: `${name}.png`, mimeType: 'image/png', buffer: photo });
     // Shrunk to 1600 px and re-encoded as WebP before upload; the dialog shows the new name and size.
-    await expect.poll(() => semanticsText(page.getByTestId('bill-receipt-file'))).toContain(`${name}.webp`);
+    await expect.poll(() => semanticsText(page.getByTestId(`bill-${kind}-file`))).toContain(`${name}.webp`);
   }
 
-  /** Saves the bill dialog and checks the receipt went up as WebP, much smaller than [photo]; returns the bill. */
-  async function saveWithReceipt(photo: Buffer) {
-    const upload = page.waitForResponse((r) => r.url().endsWith('/upload') && r.request().method() === 'PUT');
-    await page.getByTestId('bill-save').click();
-    const response = await upload;
+  /** Checks an upload request went up as WebP, much smaller than [photo], and returns the bill it answered. */
+  async function sentAsWebp(response: Response, photo: Buffer) {
     expect(response.status()).toBe(200);
     const sent = response.request().postDataBuffer() ?? Buffer.alloc(0);
     expect(sent.includes(Buffer.from('Content-Type: image/webp', 'utf8')) || sent.includes(Buffer.from('content-type: image/webp', 'utf8'))).toBe(true);
     expect(sent.length).toBeLessThan(photo.length / 2);
-    const bill = await response.json();
+    return response.json();
+  }
+
+  /** Saves the bill dialog and checks the receipt went up as WebP; returns the bill. */
+  async function saveWithReceipt(photo: Buffer) {
+    const upload = page.waitForResponse((r) => r.url().endsWith('/upload') && r.request().method() === 'PUT');
+    await page.getByTestId('bill-save').click();
+    const bill = await sentAsWebp(await upload, photo);
     expect(bill.bill.paid).toBe(true);
     expect(bill.bill.receipt_url).toMatch(/^\d+-r\d+$/);
     return bill;
   }
 
-  let firstReceipt = '';
-  await test.step('bill with its receipt, in one go', async () => {
+  const status = () => semanticsText(page.getByTestId(`bill-status-${data.tenant}`));
+
+  let firstPayment = '';
+  await test.step('bill with the tenant\'s payment, in one go', async () => {
     await page.getByRole('button', { name: 'Billing' }).click();
     // The button is disabled until the billing data has loaded; the (still empty) list shows it has.
     await expect(showing(page, 'No bills found')).toBeVisible();
@@ -78,14 +87,66 @@ test('admin creates a room, tenant, reading and a bill with a WebP receipt, repl
     await typeInto(page, 'bill-charge-amount-0', data.charge.amount);
     await typeInto(page, 'bill-charge-description-0', data.charge.description);
     const photo = noisePng(2000, 1500); // ~9 MB as PNG
-    await attachReceipt(photo, 'receipt');
-    // The bill is created, then the receipt uploaded to it: no second pass through the dialog.
-    const bill = await saveWithReceipt(photo);
-    firstReceipt = bill.bill.receipt_url;
+    await attachFile('payment', photo, 'payment');
+    // The bill is created, then the payment uploaded to it: no second pass through the dialog.
+    const upload = page.waitForResponse((r) => r.url().endsWith('/payment') && r.request().method() === 'PUT');
+    await page.getByTestId('bill-save').click();
+    const bill = await sentAsWebp(await upload, photo);
+    expect(bill.bill.paid).toBe(false);
+    expect(bill.bill.receipt_url).toBeNull();
+    expect(bill.bill.payment_url).toMatch(/^\d+-r\d+$/);
+    firstPayment = bill.bill.payment_url;
 
     await expect.poll(() => semanticsText(page.getByTestId(`bill-total-${data.tenant}`))).toContain(data.expectedTotal);
-    // The admin sees the receipt's whole storage key.
-    await expect(showing(page, `receipts/${data.tenant}/${firstReceipt}`)).toBeVisible();
+    await expect.poll(status).toContain('For verification');
+    // Files show as View buttons, never as storage keys or links.
+    await expect(showing(page, firstPayment)).toHaveCount(0);
+  });
+
+  await test.step('the tenant replaces the payment on a phone', async () => {
+    // Payment names have one-second resolution; make sure the new one differs from the first.
+    await page.waitForTimeout(1_100);
+    const tenant = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await loginAsTenant(tenant);
+    await tenant.getByTestId('tenant-latest-total').click();
+    await expect.poll(() => semanticsText(tenant.getByTestId('tenant-bill-status'))).toContain('For verification');
+    await expect(tenant.getByTestId('tenant-receipt-link')).toHaveCount(0);
+
+    const photo = noisePng(1800, 1200);
+    const chooser = tenant.waitForEvent('filechooser');
+    await tenant.getByTestId('tenant-upload-payment').click();
+    const upload = tenant.waitForResponse((r) => r.url().endsWith('/payment') && r.request().method() === 'PUT');
+    await (await chooser).setFiles({ name: 'gcash-screenshot.png', mimeType: 'image/png', buffer: photo });
+    const bill = await sentAsWebp(await upload, photo);
+    expect(bill.bill.payment_url).not.toBe(firstPayment);
+    await expect(showing(tenant, 'Payment uploaded.')).toBeVisible();
+
+    // The tenant's own payment opens in the preview.
+    const file = tenant.waitForResponse((r) => r.url().includes('/api/files/tenant-payments/'));
+    await tenant.getByTestId('tenant-payment-link').click();
+    expect((await file).headers()['content-type']).toBe('image/webp');
+    await tenant.getByTestId('signed-file-close').click();
+    await tenant.close();
+  });
+
+  let firstReceipt = '';
+  await test.step('the admin sees the payment, then attaches the receipt', async () => {
+    await page.getByRole('button', { name: 'Refresh' }).click();
+    await page.getByTestId(`bill-total-${data.tenant}`).click();
+    await expect.poll(() => semanticsText(page.getByTestId('bill-details-status'))).toContain('For verification');
+    const file = page.waitForResponse((r) => r.url().includes('/api/files/tenant-payments/'));
+    await page.getByTestId('bill-view-payment').getByRole('button', { name: 'View payment' }).click();
+    expect((await file).status()).toBe(200);
+    await page.getByTestId('signed-file-close').click();
+    await page.getByRole('button', { name: 'Close' }).click();
+
+    await page.getByTestId(`bill-edit-${data.tenant}`).click();
+    const photo = noisePng(2000, 1500);
+    await attachFile('receipt', photo, 'receipt');
+    const bill = await saveWithReceipt(photo);
+    expect(bill.bill.payment_url).not.toBeNull();
+    firstReceipt = bill.bill.receipt_url;
+    await expect.poll(status).toContain('Paid');
   });
 
   await test.step('replace the receipt', async () => {
@@ -93,10 +154,10 @@ test('admin creates a room, tenant, reading and a bill with a WebP receipt, repl
     await page.waitForTimeout(1_100);
     await page.getByTestId(`bill-edit-${data.tenant}`).click();
     const photo = noisePng(1800, 1200);
-    await attachReceipt(photo, 'receipt-2');
+    await attachFile('receipt', photo, 'receipt-2');
     const bill = await saveWithReceipt(photo);
     expect(bill.bill.receipt_url).not.toBe(firstReceipt);
-    await expect(showing(page, `receipts/${data.tenant}/${bill.bill.receipt_url}`)).toBeVisible();
+    await expect.poll(status).toContain('Paid');
     await page.getByRole('button', { name: 'Back' }).click();
   });
 
