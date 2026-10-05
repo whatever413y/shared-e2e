@@ -37,3 +37,44 @@ test('an old #/ tenant link still prefills the account ID', async ({ page }) => 
   await accountId.focus();
   await expect(accountId).toHaveValue(data.tenant);
 });
+
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('Enter logs in, the account ID is remembered, and receipts and QR codes can be saved', async ({ page }) => {
+    await page.goto(tenantUrl(data.tenant));
+    const accountId = page.getByTestId('tenant-account-id').locator('input').first();
+    await accountId.focus();
+    await expect(accountId).toHaveValue(data.tenant);
+    await page.keyboard.press('Enter');
+    await expect.poll(() => semanticsText(page.getByTestId('tenant-latest-total'))).toContain(data.expectedTotal);
+
+    // "Remember me" is on by default: after logging out, a visit without a name in the link fills the account ID in.
+    await page.getByRole('button', { name: 'Logout' }).click();
+    await expect(page.getByTestId('tenant-login-submit')).toBeVisible();
+    await page.goto(tenantUrl(''));
+    await accountId.focus();
+    await expect(accountId).toHaveValue(data.tenant);
+    await page.keyboard.press('Enter');
+
+    // The receipt (stored as WebP) is saved as a JPEG.
+    await page.getByTestId('tenant-latest-total').click();
+    await page.getByTestId('tenant-receipt-link').click();
+    const receipt = page.waitForEvent('download');
+    await page.getByTestId('signed-file-save').click();
+    const saved = (await receipt).suggestedFilename();
+    expect(saved.startsWith(`receipt-${data.tenant}-`)).toBe(true);
+    expect(saved).toMatch(/-\d+-r\d+\.jpg$/);
+    await page.getByTestId('signed-file-close').click();
+    await page.getByRole('button', { name: 'Back' }).click();
+
+    // The QR code the admin uploaded, saved as the PNG it is.
+    await page.getByRole('button', { name: 'Payment' }).click();
+    const qr = page.waitForResponse((r) => r.url().includes('/api/files/payments/gcash.png'));
+    await page.getByTestId('tenant-payment-gcash').click();
+    expect((await qr).status()).toBe(200);
+    const download = page.waitForEvent('download');
+    await page.getByTestId('signed-file-save').click();
+    expect((await download).suggestedFilename()).toBe('m18-gcash-qr.png');
+  });
+});

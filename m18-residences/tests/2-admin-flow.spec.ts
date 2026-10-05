@@ -5,7 +5,7 @@ import { data, loginAsAdmin, noisePng, pickOption, semanticsText, showing, typeI
 // One admin session builds the data the tenant spec checks: room → tenant → reading → bill.
 test.describe.configure({ mode: 'serial' });
 
-test('admin creates a room, tenant, reading and bill, then attaches a receipt converted to WebP in the browser', async ({ page }) => {
+test('admin creates a room, tenant, reading and a bill with a WebP receipt, replaces the receipt and a payment QR code', async ({ page }) => {
   await loginAsAdmin(page, admin.username, admin.password);
   await expect(showing(page, 'Welcome Admin!')).toBeVisible();
 
@@ -41,30 +41,17 @@ test('admin creates a room, tenant, reading and bill, then attaches a receipt co
     await page.getByRole('button', { name: 'Back' }).click();
   });
 
-  await test.step('bill', async () => {
-    await page.getByRole('button', { name: 'Billing' }).click();
-    // The button does nothing until the billing data has loaded, so wait for the (still empty) list.
-    await expect(showing(page, 'No bills found')).toBeVisible();
-    await page.getByRole('button', { name: 'Generate New Bill' }).click();
-    await pickOption(page, 'bill-tenant', data.tenant);
-    // Room charges (the room's rent) and electric charges (50 kWh × rate 17) fill in by themselves and are
-    // read-only; the form starts with one empty additional-charge row.
-    await typeInto(page, 'bill-charge-amount-0', data.charge.amount);
-    await typeInto(page, 'bill-charge-description-0', data.charge.description);
-    await page.getByTestId('bill-save').click();
-
-    await expect.poll(() => semanticsText(page.getByTestId(`bill-total-${data.tenant}`))).toContain(data.expectedTotal);
-  });
-
-  await test.step('receipt', async () => {
-    const photo = noisePng(2000, 1500); // ~9 MB as PNG
-    await page.getByTestId(`bill-edit-${data.tenant}`).click();
+  /** Picks [photo] with the bill dialog's receipt button and waits until it is converted to WebP. */
+  async function attachReceipt(photo: Buffer, name: string) {
     const chooser = page.waitForEvent('filechooser');
     await page.getByTestId('bill-attach-receipt').click();
-    await (await chooser).setFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: photo });
+    await (await chooser).setFiles({ name: `${name}.png`, mimeType: 'image/png', buffer: photo });
     // Shrunk to 1600 px and re-encoded as WebP before upload; the dialog shows the new name and size.
-    await expect.poll(() => semanticsText(page.getByTestId('bill-receipt-file'))).toContain('receipt.webp');
+    await expect.poll(() => semanticsText(page.getByTestId('bill-receipt-file'))).toContain(`${name}.webp`);
+  }
 
+  /** Saves the bill dialog and checks the receipt went up as WebP, much smaller than [photo]; returns the bill. */
+  async function saveWithReceipt(photo: Buffer) {
     const upload = page.waitForResponse((r) => r.url().endsWith('/upload') && r.request().method() === 'PUT');
     await page.getByTestId('bill-save').click();
     const response = await upload;
@@ -75,5 +62,54 @@ test('admin creates a room, tenant, reading and bill, then attaches a receipt co
     const bill = await response.json();
     expect(bill.bill.paid).toBe(true);
     expect(bill.bill.receipt_url).toMatch(/^\d+-r\d+$/);
+    return bill;
+  }
+
+  let firstReceipt = '';
+  await test.step('bill with its receipt, in one go', async () => {
+    await page.getByRole('button', { name: 'Billing' }).click();
+    // The button is disabled until the billing data has loaded; the (still empty) list shows it has.
+    await expect(showing(page, 'No bills found')).toBeVisible();
+    await page.getByRole('button', { name: 'Generate New Bill' }).click();
+    // Generating a bill takes the tenant's room.
+    await pickOption(page, 'bill-tenant', data.tenant);
+    // Room charges (the room's rent) and electric charges (50 kWh × rate 17) fill in by themselves and are
+    // read-only; the form starts with one empty additional-charge row.
+    await typeInto(page, 'bill-charge-amount-0', data.charge.amount);
+    await typeInto(page, 'bill-charge-description-0', data.charge.description);
+    const photo = noisePng(2000, 1500); // ~9 MB as PNG
+    await attachReceipt(photo, 'receipt');
+    // The bill is created, then the receipt uploaded to it: no second pass through the dialog.
+    const bill = await saveWithReceipt(photo);
+    firstReceipt = bill.bill.receipt_url;
+
+    await expect.poll(() => semanticsText(page.getByTestId(`bill-total-${data.tenant}`))).toContain(data.expectedTotal);
+    // The admin sees the receipt's whole storage key.
+    await expect(showing(page, `receipts/${data.tenant}/${firstReceipt}`)).toBeVisible();
+  });
+
+  await test.step('replace the receipt', async () => {
+    // Receipt names have one-second resolution; make sure the new one differs from the first.
+    await page.waitForTimeout(1_100);
+    await page.getByTestId(`bill-edit-${data.tenant}`).click();
+    const photo = noisePng(1800, 1200);
+    await attachReceipt(photo, 'receipt-2');
+    const bill = await saveWithReceipt(photo);
+    expect(bill.bill.receipt_url).not.toBe(firstReceipt);
+    await expect(showing(page, `receipts/${data.tenant}/${bill.bill.receipt_url}`)).toBeVisible();
+    await page.getByRole('button', { name: 'Back' }).click();
+  });
+
+  await test.step('payment QR code', async () => {
+    await page.getByRole('button', { name: 'Payment QR Codes' }).click();
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByTestId('payment-replace-gcash').click();
+    const upload = page.waitForResponse((r) => r.url().endsWith('/api/payments/gcash') && r.request().method() === 'PUT');
+    await (await chooser).setFiles({ name: 'gcash.png', mimeType: 'image/png', buffer: noisePng(300, 300) });
+    // Converted to PNG in the browser (the server takes nothing else).
+    const response = await upload;
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toEqual({ name: 'gcash', key: 'payments/gcash.png', exists: true });
+    await expect(showing(page, 'GCash QR code replaced')).toBeVisible();
   });
 });
