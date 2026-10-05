@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { admin } from '../env.mjs';
 import { data, loginAsAdmin, noisePng, pickOption, semanticsText, showing, typeInto } from './helpers';
 
@@ -117,20 +117,30 @@ test('admin creates a room, tenant, reading and a bill with a WebP receipt, repl
 test.describe('copying', () => {
   test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
 
-  test('table text can be selected and copied', async ({ page }) => {
-    await loginAsAdmin(page, admin.username, admin.password);
-    await page.getByRole('button', { name: 'Billing', exact: true }).click();
-    const total = page.getByTestId(`bill-total-${data.tenant}`);
-    await expect.poll(() => semanticsText(total)).toContain(data.expectedTotal);
-
-    // Drag across the total, then copy. (Text of the hidden pages underneath used to win the selection.)
-    const box = (await total.boundingBox())!;
+  /** Drags across [target] with the mouse, presses Ctrl/Cmd+C and returns the clipboard. */
+  async function dragCopy(page: Page, target: Locator): Promise<string> {
+    const box = (await target.boundingBox())!;
     await page.evaluate(() => navigator.clipboard.writeText(''));
     await page.mouse.move(box.x + 1, box.y + box.height / 2);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 10 });
     await page.mouse.up();
     await page.keyboard.press('ControlOrMeta+c');
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(data.expectedTotal);
+    await page.waitForTimeout(300);
+    return page.evaluate(() => navigator.clipboard.readText());
+  }
+
+  test('a bill row opens its details, whose text can be copied; the table itself is not selectable', async ({ page }) => {
+    await loginAsAdmin(page, admin.username, admin.password);
+    await page.getByRole('button', { name: 'Billing', exact: true }).click();
+    const total = page.getByTestId(`bill-total-${data.tenant}`);
+    await expect.poll(() => semanticsText(total)).toContain(data.expectedTotal);
+
+    expect(await dragCopy(page, total)).toBe('');
+
+    await total.click();
+    const detailsTotal = page.getByTestId('bill-details-total');
+    await expect(detailsTotal).toBeVisible();
+    expect(await dragCopy(page, detailsTotal)).toContain(data.expectedTotal);
   });
 });
