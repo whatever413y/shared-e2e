@@ -113,3 +113,24 @@ test('admin creates a room, tenant, reading and a bill with a WebP receipt, repl
     await expect(showing(page, 'GCash QR code replaced')).toBeVisible();
   });
 });
+
+test.describe('copying', () => {
+  test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
+
+  test('table text can be selected and copied', async ({ page }) => {
+    await loginAsAdmin(page, admin.username, admin.password);
+    await page.getByRole('button', { name: 'Billing', exact: true }).click();
+    const total = page.getByTestId(`bill-total-${data.tenant}`);
+    await expect.poll(() => semanticsText(total)).toContain(data.expectedTotal);
+
+    // Drag across the total, then copy. (Text of the hidden pages underneath used to win the selection.)
+    const box = (await total.boundingBox())!;
+    await page.evaluate(() => navigator.clipboard.writeText(''));
+    await page.mouse.move(box.x + 1, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.press('ControlOrMeta+c');
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(data.expectedTotal);
+  });
+});
