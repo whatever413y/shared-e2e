@@ -40,15 +40,23 @@ export function field(page: Page, testId: string): Locator {
   return page.getByTestId(testId).locator('input, textarea').first();
 }
 
-/** Types into a Flutter text field the way a user does (click, then keystrokes) and checks the value landed. */
+/**
+ * Types into a Flutter text field the way a user does (click, then keystrokes) and checks the value landed.
+ * Keystrokes sent right after the click can arrive before Flutter's editing session is ready and get lost (CI once
+ * read "000" for "100"), so wait for focus, and redo the clear-and-type if the value still doesn't match.
+ */
 export async function typeInto(page: Page, testId: string, text: string | number): Promise<void> {
   const input = field(page, testId);
-  await input.click();
-  // Flutter ignores DOM-level fill(''); clear any pre-filled value (e.g. a "0" reading) via real keystrokes.
-  await page.keyboard.press('ControlOrMeta+A');
-  await page.keyboard.press('Backspace');
-  await input.pressSequentially(String(text));
-  await expect(input).toHaveValue(String(text));
+  const value = String(text);
+  await expect(async () => {
+    await input.click();
+    await expect(input).toBeFocused({ timeout: 2_000 });
+    // Flutter ignores DOM-level fill(''); clear any pre-filled value (e.g. a "0" reading) via real keystrokes.
+    await page.keyboard.press('ControlOrMeta+A');
+    await page.keyboard.press('Backspace');
+    await input.pressSequentially(value);
+    await expect(input).toHaveValue(value, { timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
 }
 
 /** Opens a Flutter dropdown by test id and picks the option with the given text. */
