@@ -76,7 +76,7 @@ test.describe('on a phone', () => {
     await expect(page.getByTestId('tenant-bill-status')).toHaveCount(0);
 
     // The QR code the admin uploaded, saved as the PNG it is.
-    await openPage(page, 'Pay', 'Payment');
+    await openPage(page, 'Pay');
     await expect(page.getByTestId('tenant-payment-gcash')).toBeVisible();
     const qr = page.waitForResponse((r) => r.url().includes('/api/files/payments/gcash.png'));
     await page.getByTestId('tenant-payment-gcash').click();
