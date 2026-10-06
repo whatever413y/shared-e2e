@@ -5,7 +5,7 @@ import { data, loginAsAdmin, loginAsTenant, noisePng, pickOption, semanticsText,
 // One admin session builds the data the tenant spec checks: room → tenant → reading → bill.
 test.describe.configure({ mode: 'serial' });
 
-test('admin creates a room, tenant, reading and a bill with a payment, the tenant replaces the payment, the admin attaches and replaces the WebP receipt and a payment QR code', async ({
+test('admin creates a room, tenant, reading and a bill with a payment, the tenant replaces the payment, the admin attaches and replaces the WebP receipt, removes the payment, and replaces a payment QR code', async ({
   page,
   browser,
 }) => {
@@ -160,6 +160,27 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
     await attachFile('receipt', photo, 'receipt-2');
     const bill = await saveWithReceipt(photo);
     expect(bill.bill.receipt_url).not.toBe(firstReceipt);
+    await expect.poll(status).toContain('Paid');
+  });
+
+  await test.step('remove the payment in Update Bill', async () => {
+    // Billing Details has no Remove; the Update Bill form has one for the receipt and one for the payment.
+    await page.getByTestId(`bill-total-${data.tenant}`).click();
+    await expect(page.getByTestId('bill-details-status')).toBeVisible();
+    await expect(page.getByTestId('bill-remove-payment')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Close' }).click();
+    await expect(page.getByTestId('bill-details-status')).toHaveCount(0);
+
+    await page.getByTestId(`bill-edit-${data.tenant}`).click();
+    await expect(page.getByTestId('bill-remove-receipt')).toBeVisible();
+    await page.getByTestId('bill-remove-payment').click();
+    const cleared = page.waitForResponse((r) => r.url().endsWith('/payment') && r.request().method() === 'DELETE');
+    await page.getByTestId('bill-save').click();
+    const response = await cleared;
+    expect(response.status()).toBe(200);
+    const bill = await response.json();
+    expect(bill.bill.payment_url).toBeNull();
+    expect(bill.bill.paid).toBe(true);
     await expect.poll(status).toContain('Paid');
     await page.getByRole('button', { name: 'Back' }).click();
   });

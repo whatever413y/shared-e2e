@@ -16,10 +16,10 @@ test('tenant opens their link, sees the same total and Paid, and opens the recei
   // The bill's page (opened from the summary card) has the receipt link; it fetches a signed link, then the
   // image loads from the API's /api/files route.
   await page.getByTestId('tenant-latest-total').click();
-  // Paid (the admin attached a receipt): the payment can no longer be changed, but is still there to view.
+  // Paid (the admin attached a receipt): the payment can no longer be changed (the admin removed it at the end).
   await expect.poll(() => semanticsText(page.getByTestId('tenant-bill-status'))).toContain('Paid');
   await expect(page.getByTestId('tenant-upload-payment')).toHaveCount(0);
-  await expect(page.getByTestId('tenant-payment-link')).toBeVisible();
+  await expect(page.getByTestId('tenant-payment-link')).toHaveCount(0);
   const file = page.waitForResponse((r) => r.url().includes('/api/files/receipts/'));
   await page.getByTestId('tenant-receipt-link').click();
   const response = await file;
