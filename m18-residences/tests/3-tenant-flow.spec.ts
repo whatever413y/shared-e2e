@@ -70,10 +70,14 @@ test.describe('on a phone', () => {
     expect(saved.startsWith(`receipt-${data.tenant}-`)).toBe(true);
     expect(saved).toMatch(/-\d+-r\d+\.jpg$/);
     await page.getByTestId('signed-file-close').click();
+    // Taps during a dialog's or page's closing animation can be lost: wait until each is gone.
+    await expect(page.getByTestId('signed-file-close')).toHaveCount(0);
     await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page.getByTestId('tenant-bill-status')).toHaveCount(0);
 
     // The QR code the admin uploaded, saved as the PNG it is.
     await page.getByRole('button', { name: 'Payment' }).click();
+    await expect(page.getByTestId('tenant-payment-gcash')).toBeVisible();
     const qr = page.waitForResponse((r) => r.url().includes('/api/files/payments/gcash.png'));
     await page.getByTestId('tenant-payment-gcash').click();
     expect((await qr).status()).toBe(200);

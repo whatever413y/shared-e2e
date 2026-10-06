@@ -138,7 +138,10 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
     await page.getByTestId('bill-view-payment').getByRole('button', { name: 'View payment' }).click();
     expect((await file).status()).toBe(200);
     await page.getByTestId('signed-file-close').click();
+    // The preview's own Close button is also named "Close": wait until it is gone before closing the details.
+    await expect(page.getByTestId('signed-file-close')).toHaveCount(0);
     await page.getByRole('button', { name: 'Close' }).click();
+    await expect(page.getByTestId('bill-details-status')).toHaveCount(0);
 
     await page.getByTestId(`bill-edit-${data.tenant}`).click();
     const photo = noisePng(2000, 1500);
