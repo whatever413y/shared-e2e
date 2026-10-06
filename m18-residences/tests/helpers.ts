@@ -94,9 +94,27 @@ export function navItem(page: Page, label: string): Locator {
   return page.getByRole('tab', { name: navName(label) }).or(page.getByRole('button', { name: navName(label) })).first();
 }
 
-/** Opens a page of an app by its navigation label (the admin's Rooms, Electric Readings, ...; the tenant's Home, History, Pay). */
-export async function openPage(page: Page, label: string): Promise<void> {
-  await navItem(page, label).click();
+/**
+ * Opens a page of an app by its navigation label (the admin's Rooms, Electric Readings, ...; the tenant's Home,
+ * History, Pay); [labels] are alternatives.
+ *
+ * Transitional (until both apps run the redesign in production): the deploy gate tests one new app with the other
+ * as it is live, so this also drives the old apps, which open pages from a home page (Back first) and call the
+ * tenant's Pay tab "Payment".
+ */
+export async function openPage(page: Page, ...labels: string[]): Promise<void> {
+  const target = labels.map((l) => navItem(page, l)).reduce((a, b) => a.or(b)).first();
+  const shown = () => target.waitFor({ state: 'visible', timeout: 2_000 }).then(() => true, () => false);
+  if (!(await shown())) {
+    const back = page.getByRole('button', { name: 'Back' });
+    if (await back.isVisible()) await back.click();
+  }
+  await target.click();
+}
+
+/** The admin's start page: the dashboard, or (transitional, see [openPage]) the old home page. */
+export function adminHome(page: Page): Locator {
+  return showing(page, 'Needs attention').or(showing(page, 'Welcome Admin!')).first();
 }
 
 export async function loginAsAdmin(page: Page, username: string, password: string): Promise<void> {

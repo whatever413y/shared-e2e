@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { admin } from '../env.mjs';
-import { loginAsAdmin, showing } from './helpers';
+import { adminHome, loginAsAdmin, showing } from './helpers';
 
 test('admin login rejects a wrong password and stays on the login page', async ({ page }) => {
   await loginAsAdmin(page, admin.username, 'definitely-wrong');
@@ -13,5 +13,5 @@ test('admin login rejects a wrong password and stays on the login page', async (
 test('admin login with the right password reaches the dashboard', async ({ page }) => {
   await loginAsAdmin(page, admin.username, admin.password);
 
-  await expect(showing(page, 'Needs attention')).toBeVisible();
+  await expect(adminHome(page)).toBeVisible();
 });

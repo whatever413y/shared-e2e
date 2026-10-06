@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, type Response, test } from '@playwright/test';
 import { admin } from '../env.mjs';
-import { data, loginAsAdmin, loginAsTenant, noisePng, openPage, pickOption, semanticsText, showing, typeInto } from './helpers';
+import { adminHome, data, loginAsAdmin, loginAsTenant, noisePng, openPage, pickOption, semanticsText, showing, typeInto } from './helpers';
 
 // One admin session builds the data the tenant spec checks: room → tenant → reading → bill.
 test.describe.configure({ mode: 'serial' });
@@ -10,7 +10,7 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
   browser,
 }) => {
   await loginAsAdmin(page, admin.username, admin.password);
-  await expect(showing(page, 'Needs attention')).toBeVisible();
+  await expect(adminHome(page)).toBeVisible();
 
   await test.step('room', async () => {
     await openPage(page, 'Rooms');
