@@ -7,7 +7,9 @@
     "prepare-env": "node prepare.mjs",
     "test": "playwright test",
     "test:fresh": "node prepare.mjs --db-only && playwright test",
-    "e2e": "node prepare.mjs && playwright test"
+    "e2e": "node prepare.mjs && playwright test",
+    "screenshots": "node prepare.mjs && node screenshots/seed.mjs && playwright test -c screenshots.config.ts",
+    "screenshots:only": "node prepare.mjs --db-only && node screenshots/seed.mjs && playwright test -c screenshots.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

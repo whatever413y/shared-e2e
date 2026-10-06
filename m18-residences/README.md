@@ -23,6 +23,15 @@ npm test           # run the specs as-is (the data from a previous run is still 
 
 Each run's D1 and R2 live in `.wrangler-e2e/` (gitignored, wiped by `prepare.mjs`), never in the server's own `.wrangler/` dev state. The API gets e2e-only configuration through `wrangler dev --env-file` (admin `e2e-admin` / `e2e-password`, overridable with `E2E_ADMIN_USERNAME`, `E2E_ADMIN_PASSWORD`, `E2E_JWT_SECRET`).
 
+## Screenshots
+
+`npm run screenshots` builds like `npm run e2e`, fills the fresh local D1 and R2 with the server's synthetic
+`tools/dev-seed` data (`--local`: six tenants, a year of bills, latest bills Unpaid / For verification / Paid), and
+walks every screen of both apps (`screenshots/capture.spec.ts`, not part of the e2e run). It saves
+`<app>-<screen>-<phone|tablet|desktop>-<light|dark>.png` to `SCREENSHOTS_OUT` (default `./screenshots-out`,
+gitignored). `npm run screenshots:only` reuses the last builds. Narrow it with `SCREENSHOT_THEMES=light`,
+`SCREENSHOT_WIDTHS=phone,desktop`; `SCREENSHOT_TEXT_SCALE=1.3` checks larger text (files end in `-x1.3`).
+
 ## How it works
 
 - `prepare.mjs` runs first (Playwright starts web servers before `globalSetup`): creates a fresh local D1 with the server's migrations (`wrangler d1 migrations apply --local --persist-to`), builds the Worker (`worker-build --release`) and builds both apps with `--release --dart-define=API_URL=http://localhost:51000/api --dart-define=E2E=true`. Playwright then starts `wrangler dev` (the pinned wrangler in `package.json`) for the API on 51000 and, with each app's own `wrangler.jsonc`, for the app builds on 51001/51002 (as in production: unknown paths serve `index.html`, so tenant links like `/NAME` work).

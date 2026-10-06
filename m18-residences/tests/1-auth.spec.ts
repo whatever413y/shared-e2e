@@ -10,8 +10,8 @@ test('admin login rejects a wrong password and stays on the login page', async (
   await expect(showing(page, 'Admin Login')).toBeVisible();
 });
 
-test('admin login with the right password reaches the home page', async ({ page }) => {
+test('admin login with the right password reaches the dashboard', async ({ page }) => {
   await loginAsAdmin(page, admin.username, admin.password);
 
-  await expect(showing(page, 'Welcome Admin!')).toBeVisible();
+  await expect(showing(page, 'Needs attention')).toBeVisible();
 });

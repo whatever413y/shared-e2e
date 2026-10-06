@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, type Response, test } from '@playwright/test';
 import { admin } from '../env.mjs';
-import { data, loginAsAdmin, loginAsTenant, noisePng, pickOption, semanticsText, showing, typeInto } from './helpers';
+import { data, loginAsAdmin, loginAsTenant, noisePng, openPage, pickOption, semanticsText, showing, typeInto } from './helpers';
 
 // One admin session builds the data the tenant spec checks: room → tenant → reading → bill.
 test.describe.configure({ mode: 'serial' });
@@ -10,30 +10,28 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
   browser,
 }) => {
   await loginAsAdmin(page, admin.username, admin.password);
-  await expect(showing(page, 'Welcome Admin!')).toBeVisible();
+  await expect(showing(page, 'Needs attention')).toBeVisible();
 
   await test.step('room', async () => {
-    await page.getByRole('button', { name: 'Rooms' }).click();
+    await openPage(page, 'Rooms');
     await page.getByRole('button', { name: 'New Room' }).click();
     await typeInto(page, 'room-name', data.room);
     await typeInto(page, 'room-rent', data.rent);
     await page.getByTestId('room-save').click();
     await expect(showing(page, data.room)).toBeVisible();
-    await page.getByRole('button', { name: 'Back' }).click();
   });
 
   await test.step('tenant', async () => {
-    await page.getByRole('button', { name: 'Tenants' }).click();
+    await openPage(page, 'Tenants');
     await page.getByRole('button', { name: 'New Tenant' }).click();
     await typeInto(page, 'tenant-name', data.tenant);
     await pickOption(page, 'tenant-room', data.room);
     await page.getByTestId('tenant-save').click();
     await expect(showing(page, data.tenant)).toBeVisible();
-    await page.getByRole('button', { name: 'Back' }).click();
   });
 
   await test.step('reading', async () => {
-    await page.getByRole('button', { name: 'Electric Readings' }).click();
+    await openPage(page, 'Electric Readings');
     await page.getByRole('button', { name: 'New Reading' }).click();
     await pickOption(page, 'reading-room', data.room);
     await pickOption(page, 'reading-tenant', data.tenant);
@@ -41,7 +39,6 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
     await typeInto(page, 'reading-curr', data.currReading);
     await page.getByTestId('reading-save').click();
     await expect(showing(page, data.tenant)).toBeVisible();
-    await page.getByRole('button', { name: 'Back' }).click();
   });
 
   /** Picks [photo] with the `bill-attach-<kind>` button and waits until it is converted to WebP. */
@@ -76,7 +73,7 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
 
   let firstPayment = '';
   await test.step('bill with the tenant\'s payment, in one go', async () => {
-    await page.getByRole('button', { name: 'Billing' }).click();
+    await openPage(page, 'Billing');
     // The button is disabled until the billing data has loaded; the (still empty) list shows it has.
     await expect(showing(page, 'No bills found')).toBeVisible();
     await page.getByRole('button', { name: 'Generate New Bill' }).click();
@@ -183,11 +180,10 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
     expect(bill.bill.payment_url).toBeNull();
     expect(bill.bill.paid).toBe(true);
     await expect.poll(status).toContain('Paid');
-    await page.getByRole('button', { name: 'Back' }).click();
   });
 
   await test.step('payment QR code', async () => {
-    await page.getByRole('button', { name: 'Payment QR Codes' }).click();
+    await openPage(page, 'Payment QR Codes');
     const chooser = page.waitForEvent('filechooser');
     await page.getByTestId('payment-replace-gcash').click();
     const upload = page.waitForResponse((r) => r.url().endsWith('/api/payments/gcash') && r.request().method() === 'PUT');
@@ -218,7 +214,7 @@ test.describe('copying', () => {
 
   test('a bill row opens its details, whose text can be copied; the table itself is not selectable', async ({ page }) => {
     await loginAsAdmin(page, admin.username, admin.password);
-    await page.getByRole('button', { name: 'Billing', exact: true }).click();
+    await openPage(page, 'Billing');
     const total = page.getByTestId(`bill-total-${data.tenant}`);
     await expect.poll(() => semanticsText(total)).toContain(data.expectedTotal);
 

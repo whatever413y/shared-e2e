@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { data, legacyTenantUrl, semanticsText, tenantUrl } from './helpers';
+import { data, legacyTenantUrl, openPage, semanticsText, tenantUrl } from './helpers';
 
 // Runs after 2-admin-flow (files run in name order with one worker) and checks the tenant sees that bill.
 test('tenant opens their link, sees the same total and Paid, and opens the receipt the admin attached', async ({ page }) => {
@@ -76,7 +76,7 @@ test.describe('on a phone', () => {
     await expect(page.getByTestId('tenant-bill-status')).toHaveCount(0);
 
     // The QR code the admin uploaded, saved as the PNG it is.
-    await page.getByRole('button', { name: 'Payment' }).click();
+    await openPage(page, 'Pay');
     await expect(page.getByTestId('tenant-payment-gcash')).toBeVisible();
     const qr = page.waitForResponse((r) => r.url().includes('/api/files/payments/gcash.png'));
     await page.getByTestId('tenant-payment-gcash').click();

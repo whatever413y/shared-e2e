@@ -80,6 +80,25 @@ export async function loginAsTenant(page: Page): Promise<void> {
   await expect.poll(() => semanticsText(page.getByTestId('tenant-latest-total'))).toContain(data.expectedTotal);
 }
 
+/**
+ * The accessible name of a navigation destination: its label, after a badge count ("2 Verify") and before the
+ * rail's position ("Rooms Tab 6 of 7").
+ */
+export function navName(label: string): RegExp {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^(\\d+ )?${escaped}( Tab \\d+ of \\d+)?$`);
+}
+
+/** A navigation destination: a tab of the bottom bar on phones, a rail destination (a button) on wider screens. */
+export function navItem(page: Page, label: string): Locator {
+  return page.getByRole('tab', { name: navName(label) }).or(page.getByRole('button', { name: navName(label) })).first();
+}
+
+/** Opens a page of an app by its navigation label (the admin's Rooms, Electric Readings, ...; the tenant's Home, History, Pay). */
+export async function openPage(page: Page, label: string): Promise<void> {
+  await navItem(page, label).click();
+}
+
 export async function loginAsAdmin(page: Page, username: string, password: string): Promise<void> {
   await page.goto(adminUrl);
   await typeInto(page, 'admin-username', username);
