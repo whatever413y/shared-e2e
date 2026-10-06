@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { admin } from '../env.mjs';
-import { adminUrl, loginAsAdmin, navItem, tenantUrl } from '../tests/helpers';
+import { adminUrl, loginAsAdmin, navItem, showing, tenantUrl } from '../tests/helpers';
 
 /**
  * Walks every screen of both apps on the dev-seed data and saves a PNG per screen, width and theme:
@@ -142,12 +142,44 @@ for (const theme of themes) {
       }
 
       if (await openAdmin(page, 'Electric Readings', 'Readings')) await shot(page, `admin-readings-${suffix}`);
-      if (await openAdmin(page, 'Tenants')) await shot(page, `admin-tenants-${suffix}`);
+      if (await openAdmin(page, 'Tenants')) {
+        await shot(page, `admin-tenants-${suffix}`);
+        // The edit form and its date picker (Cancel leaves both unchanged).
+        const edit = await firstVisible(page.getByRole('button', { name: 'Edit tenant' }));
+        if (edit) {
+          await edit.click();
+          await shot(page, `admin-tenant-form-${suffix}`);
+          await page.getByTestId('tenant-pick-date').click();
+          await shot(page, `admin-date-picker-${suffix}`);
+          await page.getByRole('button', { name: 'Cancel' }).last().click();
+          await settle(page);
+          await closeDialog(page);
+        }
+      }
       if (await openAdmin(page, 'Rooms')) {
         await shot(page, `admin-rooms-${suffix}`);
         await page.getByRole('button', { name: 'New Room' }).click();
         await shot(page, `admin-room-form-${suffix}`);
         await closeDialog(page);
+        await settle(page);
+        // A delete confirmation, cancelled.
+        const remove = await firstVisible(page.getByRole('button', { name: 'Delete room' }));
+        if (remove) {
+          await remove.click();
+          await shot(page, `admin-confirm-${suffix}`);
+          await page.getByRole('button', { name: 'Cancel' }).click();
+          await settle(page);
+        }
+        // A toast: save a room unchanged.
+        const editRoom = await firstVisible(page.getByRole('button', { name: 'Edit room' }));
+        if (editRoom) {
+          await editRoom.click();
+          await page.getByTestId('room-save').click();
+          await expect(showing(page, 'Room updated')).toBeVisible();
+          await page.mouse.move(1, 1);
+          await page.waitForTimeout(400);
+          await page.screenshot({ path: path.join(out, `admin-toast-${suffix}.png`) });
+        }
       }
       if (await openAdmin(page, 'Payment QR Codes')) await shot(page, `admin-qr-${suffix}`);
     });
@@ -171,6 +203,13 @@ for (const theme of themes) {
       if (history) {
         await history.click();
         await shot(page, `tenant-history-${suffix}`);
+        const bill = await firstVisible(page.getByRole('button', { name: /^\w+ \d{4} .*kWh/ }));
+        if (bill) {
+          await bill.click();
+          await shot(page, `tenant-bill-details-${suffix}`);
+          await closeDialog(page);
+          await settle(page);
+        }
         const back = await firstVisible(page.getByRole('button', { name: 'Back' }));
         if (back) await back.click();
       }
