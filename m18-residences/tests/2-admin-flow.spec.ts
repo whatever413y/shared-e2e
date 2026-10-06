@@ -164,10 +164,11 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
   });
 
   await test.step('remove the payment in Update Bill', async () => {
-    // Billing Details has no Remove; the Update Bill form has one for the receipt and one for the payment.
+    // Billing Details only views; the Update Bill form attaches, changes and removes the receipt and the payment.
     await page.getByTestId(`bill-total-${data.tenant}`).click();
     await expect(page.getByTestId('bill-details-status')).toBeVisible();
     await expect(page.getByTestId('bill-remove-payment')).toHaveCount(0);
+    await expect(page.getByTestId('bill-attach-payment')).toHaveCount(0);
     await page.getByRole('button', { name: 'Close' }).click();
     await expect(page.getByTestId('bill-details-status')).toHaveCount(0);
 
