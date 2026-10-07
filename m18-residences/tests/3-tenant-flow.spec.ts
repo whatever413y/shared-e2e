@@ -78,8 +78,8 @@ test.describe('on a phone', () => {
     // The QR code the admin uploaded, saved as the PNG it is.
     await openPage(page, 'Pay');
     await expect(page.getByTestId('tenant-payment-gcash')).toBeVisible();
-    // payments/gcash.png before payment methods, payments/<id>-<ms>.png after (transitional).
-    const qr = page.waitForResponse((r) => r.url().includes('/api/files/payments/'));
+    // Each upload gets a new key: payments/<id>-<unix ms>.png.
+    const qr = page.waitForResponse((r) => /\/api\/files\/payments\/\d+-\d+\.png/.test(r.url()));
     await page.getByTestId('tenant-payment-gcash').click();
     expect((await qr).status()).toBe(200);
     const download = page.waitForEvent('download');
@@ -89,12 +89,9 @@ test.describe('on a phone', () => {
     await expect(page.getByTestId('signed-file-close')).toHaveCount(0);
 
     // A method the admin added: no bundled logo (a tile with its name), its account shown with a copy button.
-    // transitional: only with the current tenant app.
     const added = page.getByTestId(`tenant-payment-${data.paymentMethod.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`);
-    if ((await page.getByTestId('theme-toggle').count()) > 0) {
-      await expect(added).toBeVisible();
-      await expect.poll(() => semanticsText(added)).toContain(data.paymentMethod.newAccountNumber);
-      await expect(added.getByRole('button', { name: 'Copy account number' })).toBeVisible();
-    }
+    await expect(added).toBeVisible();
+    await expect.poll(() => semanticsText(added)).toContain(data.paymentMethod.newAccountNumber);
+    await expect(added.getByRole('button', { name: 'Copy account number' })).toBeVisible();
   });
 });
