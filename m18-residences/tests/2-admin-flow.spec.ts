@@ -21,6 +21,38 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
     await expect(showing(page, data.room)).toBeVisible();
   });
 
+  /** Whether the admin app has this round's features (light/dark switch, change tracking, payment methods). */
+  // transitional: the server's deploy gate runs these specs against the live apps, which don't have them yet.
+  const current = async () => (await page.getByTestId('theme-toggle').count()) > 0;
+
+  await test.step('an edit can only be saved once something changed', async () => {
+    if (!(await current())) return;
+    await page.getByRole('button', { name: 'Edit room' }).first().click();
+    const save = page.getByTestId('room-save').getByRole('button');
+    await expect(save).toBeDisabled();
+    await typeInto(page, 'room-rent', data.rent + 1);
+    await expect(save).toBeEnabled();
+    await typeInto(page, 'room-rent', data.rent);
+    await expect(save).toBeDisabled();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByTestId('room-save')).toHaveCount(0);
+  });
+
+  await test.step('the light/dark switch is remembered', async () => {
+    if (!(await current())) return;
+    const saved = () => page.evaluate(() => localStorage.getItem('flutter.theme_mode'));
+    expect(await saved()).toBeNull();
+    await page.getByTestId('theme-toggle').click();
+    await expect.poll(saved).not.toBeNull();
+    const mode = await saved();
+    await page.reload();
+    await expect(page.getByTestId('theme-toggle')).toBeVisible();
+    expect(await saved()).toBe(mode);
+    // Switching back to the system's look forgets the choice.
+    await page.getByTestId('theme-toggle').click();
+    await expect.poll(saved).toBeNull();
+  });
+
   await test.step('tenant', async () => {
     await openPage(page, 'Tenants');
     await page.getByRole('button', { name: 'New Tenant' }).click();
@@ -132,7 +164,8 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
     await page.getByTestId(`bill-total-${data.tenant}`).click();
     await expect.poll(() => semanticsText(page.getByTestId('bill-details-status'))).toContain('For verification');
     const file = page.waitForResponse((r) => r.url().includes('/api/files/tenant-payments/'));
-    await page.getByTestId('bill-view-payment').getByRole('button', { name: 'View payment' }).click();
+    // "View payment" before the bill file rows, "View" in a row named "Payment from tenant" after.
+    await page.getByTestId('bill-view-payment').getByRole('button', { name: /^View/ }).first().click();
     expect((await file).status()).toBe(200);
     await page.getByTestId('signed-file-close').click();
     // The preview's own Close button is also named "Close": wait until it is gone before closing the details.
@@ -186,13 +219,48 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
     await openPage(page, 'Payment QR Codes');
     const chooser = page.waitForEvent('filechooser');
     await page.getByTestId('payment-replace-gcash').click();
-    const upload = page.waitForResponse((r) => r.url().endsWith('/api/payments/gcash') && r.request().method() === 'PUT');
+    // transitional: the live admin uploads to /api/payments/gcash, the current one to /api/payment-methods/<id>/image.
+    const upload = page.waitForResponse(
+      (r) => /\/api\/(payments\/gcash|payment-methods\/\d+\/image)$/.test(r.url()) && r.request().method() === 'PUT',
+    );
     await (await chooser).setFiles({ name: 'gcash.png', mimeType: 'image/png', buffer: noisePng(300, 300) });
     // Converted to PNG in the browser (the server takes nothing else).
     const response = await upload;
     expect(response.status()).toBe(200);
-    expect(await response.json()).toEqual({ name: 'gcash', key: 'payments/gcash.png', exists: true });
+    const body = await response.json();
+    expect(body.exists ?? body.has_image).toBe(true);
     await expect(showing(page, 'GCash QR code replaced')).toBeVisible();
+  });
+
+  await test.step('add and edit a payment method', async () => {
+    if (!(await current())) return;
+    await page.getByRole('button', { name: 'New Payment Method' }).click();
+    const save = page.getByTestId('payment-method-save').getByRole('button');
+    await expect(save).toBeDisabled();
+    await typeInto(page, 'payment-method-name', data.paymentMethod.name);
+    await typeInto(page, 'payment-method-account-name', data.paymentMethod.accountName);
+    await typeInto(page, 'payment-method-account-number', data.paymentMethod.accountNumber);
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByTestId('payment-method-attach-qr').click();
+    await (await chooser).setFiles({ name: 'bank.png', mimeType: 'image/png', buffer: noisePng(240, 240) });
+    await expect(showing(page, 'Ready to upload')).toBeVisible();
+    const created = page.waitForResponse((r) => r.url().endsWith('/api/payment-methods') && r.request().method() === 'POST');
+    const uploaded = page.waitForResponse((r) => /\/api\/payment-methods\/\d+\/image$/.test(r.url()) && r.request().method() === 'PUT');
+    await save.click();
+    expect((await created).status()).toBe(201);
+    expect((await uploaded).status()).toBe(200);
+    await expect(showing(page, `${data.paymentMethod.name} added`)).toBeVisible();
+
+    const slug = data.paymentMethod.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    await page.getByTestId(`payment-menu-${slug}`).click();
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
+    await expect(save).toBeDisabled();
+    await typeInto(page, 'payment-method-account-number', data.paymentMethod.newAccountNumber);
+    const updated = page.waitForResponse((r) => /\/api\/payment-methods\/\d+$/.test(r.url()) && r.request().method() === 'PUT');
+    await save.click();
+    const method = await (await updated).json();
+    expect(method).toMatchObject({ name: data.paymentMethod.name, account_number: data.paymentMethod.newAccountNumber, has_image: true });
+    await expect(showing(page, `${data.paymentMethod.name} saved`)).toBeVisible();
   });
 });
 
