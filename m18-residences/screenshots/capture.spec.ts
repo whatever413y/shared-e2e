@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { admin } from '../env.mjs';
-import { adminUrl, loginAsAdmin, navItem, tenantUrl } from '../tests/helpers';
+import { adminUrl, field, loginAsAdmin, navItem, showing, tenantUrl, typeInto } from '../tests/helpers';
 
 /**
  * Walks every screen of both apps on the dev-seed data and saves a PNG per screen, width and theme:
@@ -10,7 +10,7 @@ import { adminUrl, loginAsAdmin, navItem, tenantUrl } from '../tests/helpers';
  * same walk captures the UI before and after a redesign.
  *   SCREENSHOTS_OUT    output folder (default ./screenshots-out)
  *   SCREENSHOT_THEMES  comma list of light,dark (default both)
- *   SCREENSHOT_WIDTHS  comma list of phone,tablet,desktop (default all)
+ *   SCREENSHOT_WIDTHS  comma list of phone,tablet,desktop,wide,ultrawide (default all)
  *   SCREENSHOT_TEXT_SCALE  e.g. 1.3: the browser's text size (Flutter web scales text with the root font size);
  *                          the files then end in -x1.3
  */
@@ -20,7 +20,9 @@ const sizes = [
   { name: 'phone', width: 390, height: 844 },
   { name: 'tablet', width: 768, height: 1024 },
   { name: 'desktop', width: 1440, height: 900 },
-].filter((s) => (process.env.SCREENSHOT_WIDTHS ?? 'phone,tablet,desktop').split(',').includes(s.name));
+  { name: 'wide', width: 1920, height: 1080 },
+  { name: 'ultrawide', width: 2560, height: 1440 },
+].filter((s) => (process.env.SCREENSHOT_WIDTHS ?? 'phone,tablet,desktop,wide,ultrawide').split(',').includes(s.name));
 
 const textScale = Number(process.env.SCREENSHOT_TEXT_SCALE ?? '1');
 
@@ -119,6 +121,15 @@ for (const theme of themes) {
       await expect(page.getByTestId('admin-login-submit')).toHaveCount(0);
       await shot(page, `admin-home-${suffix}`);
 
+      // The other theme, by the switch beside the brand (in the More sheet on phones); switched back after.
+      const toggle = await firstVisible(page.getByTestId('theme-toggle'));
+      if (toggle) {
+        await toggle.click();
+        await shot(page, `admin-home-switched-${suffix}`);
+        await page.getByTestId('theme-toggle').click();
+        await settle(page);
+      }
+
       const search = await firstVisible(page.getByRole('button', { name: 'Search' }), page.getByPlaceholder(/Search/));
       if (search) {
         await search.click();
@@ -142,14 +153,63 @@ for (const theme of themes) {
       }
 
       if (await openAdmin(page, 'Electric Readings', 'Readings')) await shot(page, `admin-readings-${suffix}`);
-      if (await openAdmin(page, 'Tenants')) await shot(page, `admin-tenants-${suffix}`);
+      if (await openAdmin(page, 'Tenants')) {
+        await shot(page, `admin-tenants-${suffix}`);
+        // The edit form and its date picker (Cancel leaves both unchanged).
+        const edit = await firstVisible(page.getByRole('button', { name: 'Edit tenant' }));
+        if (edit) {
+          await edit.click();
+          await shot(page, `admin-tenant-form-${suffix}`);
+          await page.getByTestId('tenant-pick-date').click();
+          await shot(page, `admin-date-picker-${suffix}`);
+          await page.getByRole('button', { name: 'Cancel' }).last().click();
+          await settle(page);
+          await closeDialog(page);
+        }
+      }
       if (await openAdmin(page, 'Rooms')) {
         await shot(page, `admin-rooms-${suffix}`);
         await page.getByRole('button', { name: 'New Room' }).click();
         await shot(page, `admin-room-form-${suffix}`);
         await closeDialog(page);
+        await settle(page);
+        // A delete confirmation, cancelled.
+        const remove = await firstVisible(page.getByRole('button', { name: 'Delete room' }));
+        if (remove) {
+          await remove.click();
+          await shot(page, `admin-confirm-${suffix}`);
+          await page.getByRole('button', { name: 'Cancel' }).click();
+          await settle(page);
+        }
+        // The edit form unchanged (Save disabled), then a toast: the rent changed by one peso, then put back.
+        const editRoom = await firstVisible(page.getByRole('button', { name: 'Edit room' }));
+        if (editRoom) {
+          await editRoom.click();
+          await shot(page, `admin-room-edit-${suffix}`);
+          // Flutter mirrors a field's value into its <input> only while it is focused.
+          await field(page, 'room-rent').focus();
+          const rent = Number(await field(page, 'room-rent').inputValue());
+          await typeInto(page, 'room-rent', rent + 1);
+          await page.getByTestId('room-save').click();
+          await expect(showing(page, 'Room updated')).toBeVisible();
+          await page.mouse.move(1, 1);
+          await page.waitForTimeout(400);
+          await page.screenshot({ path: path.join(out, `admin-toast-${suffix}.png`) });
+          await page.getByRole('button', { name: 'Edit room' }).first().click();
+          await typeInto(page, 'room-rent', rent);
+          await page.getByTestId('room-save').click();
+          await expect(page.getByTestId('room-save')).toHaveCount(0);
+        }
       }
-      if (await openAdmin(page, 'Payment QR Codes')) await shot(page, `admin-qr-${suffix}`);
+      if (await openAdmin(page, 'Payment QR Codes')) {
+        await shot(page, `admin-qr-${suffix}`);
+        const add = await firstVisible(page.getByRole('button', { name: 'New Payment Method' }));
+        if (add) {
+          await add.click();
+          await shot(page, `admin-payment-method-form-${suffix}`);
+          await closeDialog(page);
+        }
+      }
     });
 
     test(`tenant ${suffix}`, async ({ page }) => {
@@ -171,6 +231,13 @@ for (const theme of themes) {
       if (history) {
         await history.click();
         await shot(page, `tenant-history-${suffix}`);
+        const bill = await firstVisible(page.getByRole('button', { name: /^\w+ \d{4} .*kWh/ }));
+        if (bill) {
+          await bill.click();
+          await shot(page, `tenant-bill-details-${suffix}`);
+          await closeDialog(page);
+          await settle(page);
+        }
         const back = await firstVisible(page.getByRole('button', { name: 'Back' }));
         if (back) await back.click();
       }

@@ -10,6 +10,8 @@ export const legacyTenantUrl = (accountId: string) => `http://localhost:${ports.
 
 /** Test data shared by the specs (tenant names are uppercase: the tenant login uppercases what it sends). */
 export const data = {
+  // A payment method the admin adds (synthetic).
+  paymentMethod: { name: 'E2E Bank', accountName: 'E2E Owner', accountNumber: '0000 1111 2222', newAccountNumber: '0000 3333 4444' },
   room: 'E2E ROOM 101',
   rent: 5000,
   tenant: 'E2E TENANT',
