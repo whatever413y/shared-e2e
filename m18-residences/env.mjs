@@ -24,6 +24,16 @@ export const admin = {
 
 export const jwtSecret = process.env.E2E_JWT_SECRET ?? 'e2e-jwt-secret-not-for-production';
 
+/**
+ * Cloudflare Turnstile's always-pass test keys (public, documented by Cloudflare): the apps render the widget with the
+ * site key and the API accepts any token with the secret. The widget's script loads from challenges.cloudflare.com, so
+ * runs need internet access.
+ */
+export const turnstile = {
+  siteKey: '1x00000000000000000000AA',
+  secret: '1x0000000000000000000000000000000AA',
+};
+
 /** Local D1 + R2 state for the run; wiped by prepare.mjs, so nothing from dev (`.wrangler/state`) is touched. */
 export const statePath = path.join(here, '.wrangler-e2e');
 
@@ -36,6 +46,7 @@ export function serverVars() {
     ADMIN_USERNAME: admin.username,
     ADMIN_PASSWORD: admin.password,
     ALLOWED_ORIGINS: `http://localhost:${ports.admin},http://localhost:${ports.tenant}`,
+    TURNSTILE_SECRET: turnstile.secret,
   };
 }
 
