@@ -3,7 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
-import { apiUrl, ports, repos, serverConfig, serverVars, serverVarsFile, statePath, wrangler } from './env.mjs';
+import { apiUrl, ports, repos, serverConfig, serverVars, serverVarsFile, statePath, turnstile, wrangler } from './env.mjs';
 
 const isWindows = process.platform === 'win32';
 
@@ -58,6 +58,7 @@ for (const [name, dir] of [
     '--no-web-resources-cdn',
     `--dart-define=API_URL=${apiUrl}`,
     '--dart-define=E2E=true',
+    `--dart-define=TURNSTILE_SITE_KEY=${turnstile.siteKey}`,
   ], dir);
 }
 

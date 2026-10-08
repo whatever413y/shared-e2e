@@ -21,7 +21,7 @@ npm run test:fresh # fresh local D1 only, then run the specs against the last bu
 npm test           # run the specs as-is (the data from a previous run is still there)
 ```
 
-Each run's D1 and R2 live in `.wrangler-e2e/` (gitignored, wiped by `prepare.mjs`), never in the server's own `.wrangler/` dev state. The API gets e2e-only configuration through `wrangler dev --env-file` (admin `e2e-admin` / `e2e-password`, overridable with `E2E_ADMIN_USERNAME`, `E2E_ADMIN_PASSWORD`, `E2E_JWT_SECRET`).
+Each run's D1 and R2 live in `.wrangler-e2e/` (gitignored, wiped by `prepare.mjs`), never in the server's own `.wrangler/` dev state. The API gets e2e-only configuration through `wrangler dev --env-file` (admin `e2e-admin` / `e2e-password`, overridable with `E2E_ADMIN_USERNAME`, `E2E_ADMIN_PASSWORD`, `E2E_JWT_SECRET`). Logins use Cloudflare Turnstile's always-pass test keys (`TURNSTILE_SECRET` for the API, `TURNSTILE_SITE_KEY` compiled into both apps; see `env.mjs`): the widget's script loads from challenges.cloudflare.com, so runs need internet access. The API limits logins to 10 a minute per client and login route; the specs stay under it.
 
 ## Screenshots
 
