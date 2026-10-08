@@ -50,10 +50,13 @@ test.describe('on a phone', () => {
     const accountId = page.getByTestId('tenant-account-id').locator('input').first();
     await accountId.focus();
     await expect(accountId).toHaveValue(data.tenant);
+    // "Remember me" is off by default (it was on before; check() leaves a ticked box ticked).
+    await page.getByTestId('tenant-remember-me').getByRole('checkbox').check();
+    await accountId.focus();
     await page.keyboard.press('Enter');
     await expect.poll(() => semanticsText(page.getByTestId('tenant-latest-total'))).toContain(data.expectedTotal);
 
-    // "Remember me" is on by default: after logging out, a visit without a name in the link fills the account ID in.
+    // Remembered: after logging out, a visit without a name in the link fills the account ID in.
     await page.getByRole('button', { name: 'Logout' }).click();
     await expect(page.getByTestId('tenant-login-submit')).toBeVisible();
     await page.goto(tenantUrl(''));

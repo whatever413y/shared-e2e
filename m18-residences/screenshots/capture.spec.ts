@@ -39,9 +39,15 @@ async function prepare(page: Page, theme: 'light' | 'dark', size: { width: numbe
   }
 }
 
-/** Flutter paints on a canvas: wait for the network to go quiet and animations to finish before a shot. */
+/**
+ * Flutter paints on a canvas: wait for the network to go quiet and animations to finish before a shot. The login
+ * pages' Turnstile widget keeps its iframe talking to Cloudflare, so the network may never go quiet there: wait at
+ * most 5 s for it.
+ */
 async function settle(page: Page) {
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch((e: unknown) => {
+    if (!(e instanceof Error && e.name === 'TimeoutError')) throw e;
+  });
   await page.waitForTimeout(900);
 }
 
