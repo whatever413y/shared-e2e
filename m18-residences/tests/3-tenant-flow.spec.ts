@@ -45,7 +45,7 @@ test('an old #/ tenant link still prefills the account ID', async ({ page }) => 
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('Enter logs in, the account ID is remembered, and receipts and QR codes can be saved', async ({ page }) => {
+  test('Enter logs in, the account ID is remembered, receipts and QR codes can be saved, and the × forgets the ID', async ({ page }) => {
     await page.goto(tenantUrl(data.tenant));
     const accountId = page.getByTestId('tenant-account-id').locator('input').first();
     await accountId.focus();
@@ -96,5 +96,19 @@ test.describe('on a phone', () => {
     await expect(added).toBeVisible();
     await expect.poll(() => semanticsText(added)).toContain(data.paymentMethod.newAccountNumber);
     await expect(added.getByRole('button', { name: 'Copy account number' })).toBeVisible();
+
+    // The × in the Account ID box clears the field and forgets the remembered ID.
+    await page.getByRole('button', { name: 'Logout' }).click();
+    await expect(page.getByTestId('tenant-login-submit')).toBeVisible();
+    await page.goto(tenantUrl(''));
+    await accountId.focus();
+    await expect(accountId).toHaveValue(data.tenant);
+    await page.getByTestId('tenant-forget-account').click();
+    await accountId.focus();
+    await expect(accountId).toHaveValue('');
+    await expect(page.getByTestId('tenant-remember-me').getByRole('checkbox')).not.toBeChecked();
+    await page.goto(tenantUrl(''));
+    await accountId.focus();
+    await expect(accountId).toHaveValue('');
   });
 });
