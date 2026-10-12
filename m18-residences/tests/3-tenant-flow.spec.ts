@@ -63,6 +63,8 @@ test.describe('on a phone', () => {
     // "Remember me" is off by default (it was on before; check() leaves a ticked box ticked).
     await page.getByTestId('tenant-remember-me').getByRole('checkbox').check();
     await accountId.focus();
+    // Flutter mirrors the text only once it has taken over the focused field; an Enter before that never reaches it.
+    await expect(accountId).toHaveValue(data.tenant);
     await page.keyboard.press('Enter');
     await expect.poll(() => semanticsText(page.getByTestId('tenant-latest-total'))).toContain(data.expectedTotal);
 
