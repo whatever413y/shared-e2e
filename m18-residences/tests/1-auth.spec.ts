@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { admin } from '../env.mjs';
-import { adminHome, loginAsAdmin, showing } from './helpers';
+import { adminHome, expectSessionEndedNotice, expireLogin, loginAsAdmin, openPage, showing } from './helpers';
 
 test('admin login rejects a wrong password and stays on the login page', async ({ page }) => {
   await loginAsAdmin(page, admin.username, 'definitely-wrong');
@@ -14,4 +14,15 @@ test('admin login with the right password reaches the dashboard', async ({ page 
   await loginAsAdmin(page, admin.username, admin.password);
 
   await expect(adminHome(page)).toBeVisible();
+});
+
+test('an expired admin login goes back to the login page with a notice', async ({ page }) => {
+  await loginAsAdmin(page, admin.username, admin.password);
+  await expect(adminHome(page)).toBeVisible();
+
+  await expireLogin(page);
+  await openPage(page, 'Rooms'); // each page reloads its data when opened: that call answers 401
+
+  await expectSessionEndedNotice(page);
+  await expect(showing(page, 'Admin Login')).toBeVisible();
 });

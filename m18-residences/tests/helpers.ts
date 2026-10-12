@@ -71,6 +71,29 @@ export async function pickOption(page: Page, testId: string, optionText: string)
   await option.last().click();
 }
 
+/**
+ * From now on the API answers every call outside /api/auth/ with the 401 of an expired login (as the server does
+ * once a token's time is up); the app should go back to its login page with the notice. CORS preflights still
+ * reach the real API.
+ */
+export async function expireLogin(page: Page): Promise<void> {
+  await page.route(/\/api\/(?!auth\/)/, (route) =>
+    route.request().method() === 'OPTIONS'
+      ? route.continue()
+      : route.fulfill({
+          status: 401,
+          contentType: 'application/json',
+          headers: { 'access-control-allow-origin': '*' },
+          body: JSON.stringify({ error: 'Authentication required' }),
+        }),
+  );
+}
+
+/** The login page's notice after an expired login. */
+export async function expectSessionEndedNotice(page: Page): Promise<void> {
+  await expect.poll(() => semanticsText(page.getByTestId('login-notice'))).toContain('Your session has ended. Please log in again.');
+}
+
 /** Logs in to the tenant app through the tenant's link and waits for the latest bill's total. */
 export async function loginAsTenant(page: Page): Promise<void> {
   await page.goto(tenantUrl(data.tenant));

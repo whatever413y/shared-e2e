@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { data, legacyTenantUrl, openPage, semanticsText, tenantUrl } from './helpers';
+import { data, expectSessionEndedNotice, expireLogin, legacyTenantUrl, loginAsTenant, openPage, semanticsText, tenantUrl } from './helpers';
 
 // Runs after 2-admin-flow (files run in name order with one worker) and checks the tenant sees that bill.
 test('tenant opens their link, sees the same total and Paid, and opens the receipt the admin attached', async ({ page }) => {
@@ -25,6 +25,16 @@ test('tenant opens their link, sees the same total and Paid, and opens the recei
   const response = await file;
   expect(response.status()).toBe(200);
   expect(response.headers()['content-type']).toBe('image/webp');
+});
+
+test('an expired tenant login goes back to the login page with a notice', async ({ page }) => {
+  await loginAsTenant(page);
+
+  await expireLogin(page);
+  await openPage(page, 'Pay'); // the payment methods load when Pay first opens: that call answers 401
+
+  await expectSessionEndedNotice(page);
+  await expect(page.getByTestId('tenant-login-submit')).toBeVisible();
 });
 
 test('an unknown account ID is rejected with the existing message', async ({ page }) => {
