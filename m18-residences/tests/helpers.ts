@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type FileChooser, type Locator, type Page } from '@playwright/test';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import { ports } from '../env.mjs';
@@ -167,13 +167,38 @@ export function noisePng(width: number, height: number): Buffer {
 /** A file for [chooseFile] / [pasteFile]. */
 export type UploadFile = { name: string; mimeType: string; buffer: Buffer };
 
-/** Clicks [opener] (an Attach/Upload button), picks [file] in the chooser that opens, and saves it once previewed. */
-export async function chooseFile(page: Page, opener: Locator, file: UploadFile): Promise<void> {
+/**
+ * Clicks [opener] (an Attach/Upload button). TRANSITIONAL, while apps without the chooser may still be live (each
+ * deploy gate runs these specs against the other apps' `live`): returns the browser's file picker when the app opens
+ * it directly (before shared 0.11), or `null` when the app's chooser opened.
+ */
+async function openAttach(page: Page, opener: Locator): Promise<FileChooser | null> {
+  const picker = page.waitForEvent('filechooser', { timeout: 20_000 });
+  const chooser = page
+    .getByTestId('attach-choose-file')
+    .waitFor({ timeout: 20_000 })
+    .then(() => null);
+  picker.catch(() => {});
+  chooser.catch(() => {});
   await opener.click();
-  const chooser = page.waitForEvent('filechooser');
+  return Promise.race([picker, chooser]);
+}
+
+/**
+ * Clicks [opener] (an Attach/Upload button), picks [file] in the chooser that opens, and saves it once previewed.
+ * Returns whether the app has the chooser (an older app opens the file picker directly; see [openAttach]).
+ */
+export async function chooseFile(page: Page, opener: Locator, file: UploadFile): Promise<boolean> {
+  const direct = await openAttach(page, opener);
+  if (direct) {
+    await direct.setFiles(file);
+    return false;
+  }
+  const picker = page.waitForEvent('filechooser');
   await page.getByTestId('attach-choose-file').click();
-  await (await chooser).setFiles(file);
+  await (await picker).setFiles(file);
   await saveAttachment(page);
+  return true;
 }
 
 /** Saves the file the chooser shows as its preview. */
@@ -186,10 +211,16 @@ async function saveAttachment(page: Page): Promise<void> {
  * Clicks [opener] (an Attach/Upload button) and pastes [file] into the chooser that opens, as Ctrl+V of a copied
  * picture does: a `paste` event carrying the file (no clipboard permission needed); saves it once previewed.
  */
-export async function pasteFile(page: Page, opener: Locator, file: UploadFile): Promise<void> {
-  await opener.click();
+export async function pasteFile(page: Page, opener: Locator, file: UploadFile): Promise<boolean> {
+  const direct = await openAttach(page, opener);
+  if (direct) {
+    // An app without the chooser: nothing to paste into, so pick the file instead.
+    await direct.setFiles(file);
+    return false;
+  }
   await pasteInto(page, file);
   await saveAttachment(page);
+  return true;
 }
 
 /** Pastes [file] into the open chooser (a `paste` event carrying it, as Ctrl+V does) and waits for its preview. */
