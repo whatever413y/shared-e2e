@@ -1,11 +1,11 @@
 import { expect, type Locator, type Page, type Response, test } from '@playwright/test';
 import { admin } from '../env.mjs';
-import { adminHome, data, loginAsAdmin, loginAsTenant, noisePng, openPage, pickOption, semanticsText, showing, typeInto } from './helpers';
+import { adminHome, chooseFile, data, loginAsAdmin, loginAsTenant, noisePng, openPage, pasteFile, pasteInto, pickOption, semanticsText, showing, typeInto } from './helpers';
 
 // One admin session builds the data the tenant spec checks: room → tenant → reading → bill.
 test.describe.configure({ mode: 'serial' });
 
-test('admin creates a room, tenant, reading and a bill with a payment, the tenant replaces the payment, the admin attaches and replaces the WebP receipt, removes the payment, and replaces a payment QR code', async ({
+test('admin creates a room, tenant, reading and a bill with a payment and removes it (Unpaid), the tenant uploads a new payment, the admin attaches and replaces the WebP receipt (the payment then stays), and replaces a payment QR code', async ({
   page,
   browser,
 }) => {
@@ -67,11 +67,10 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
     await expect(showing(page, data.tenant)).toBeVisible();
   });
 
-  /** Picks [photo] with the `bill-attach-<kind>` button and waits until it is converted to WebP. */
-  async function attachFile(kind: 'receipt' | 'payment', photo: Buffer, name: string) {
-    const chooser = page.waitForEvent('filechooser');
-    await page.getByTestId(`bill-attach-${kind}`).click();
-    await (await chooser).setFiles({ name: `${name}.png`, mimeType: 'image/png', buffer: photo });
+  /** Picks (or with [paste], pastes) [photo] with the `bill-attach-<kind>` button and waits until it is converted to WebP. */
+  async function attachFile(kind: 'receipt' | 'payment', photo: Buffer, name: string, { paste = false } = {}) {
+    const file = { name: `${name}.png`, mimeType: 'image/png', buffer: photo };
+    await (paste ? pasteFile : chooseFile)(page, page.getByTestId(`bill-attach-${kind}`), file);
     // Shrunk to 1600 px and re-encoded as WebP before upload; the dialog shows the new name and size.
     await expect.poll(() => semanticsText(page.getByTestId(`bill-${kind}-file`))).toContain(`${name}.webp`);
   }
@@ -126,20 +125,32 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
     await expect(showing(page, firstPayment)).toHaveCount(0);
   });
 
-  await test.step('the tenant replaces the payment on a phone', async () => {
+  await test.step('remove the payment while the bill has no receipt: back to Unpaid', async () => {
+    await page.getByTestId(`bill-edit-${data.tenant}`).click();
+    await page.getByTestId('bill-remove-payment').click();
+    const cleared = page.waitForResponse((r) => r.url().endsWith('/payment') && r.request().method() === 'DELETE');
+    await page.getByTestId('bill-save').click();
+    const response = await cleared;
+    expect(response.status()).toBe(200);
+    const bill = await response.json();
+    expect(bill.bill.payment_url).toBeNull();
+    expect(bill.bill.paid).toBe(false);
+    await expect.poll(status).toContain('Unpaid');
+  });
+
+  await test.step('the tenant uploads a new payment on a phone', async () => {
     // Payment names have one-second resolution; make sure the new one differs from the first.
     await page.waitForTimeout(1_100);
     const tenant = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await loginAsTenant(tenant);
     await tenant.getByTestId('tenant-latest-total').click();
-    await expect.poll(() => semanticsText(tenant.getByTestId('tenant-bill-status'))).toContain('For verification');
+    await expect.poll(() => semanticsText(tenant.getByTestId('tenant-bill-status'))).toContain('Unpaid');
     await expect(tenant.getByTestId('tenant-receipt-link')).toHaveCount(0);
+    await expect(tenant.getByTestId('tenant-payment-link')).toHaveCount(0);
 
     const photo = noisePng(1800, 1200);
-    const chooser = tenant.waitForEvent('filechooser');
-    await tenant.getByTestId('tenant-upload-payment').click();
     const upload = tenant.waitForResponse((r) => r.url().endsWith('/payment') && r.request().method() === 'PUT');
-    await (await chooser).setFiles({ name: 'gcash-screenshot.png', mimeType: 'image/png', buffer: photo });
+    await chooseFile(tenant, tenant.getByTestId('tenant-upload-payment'), { name: 'gcash-screenshot.png', mimeType: 'image/png', buffer: photo });
     const bill = await sentAsWebp(await upload, photo);
     expect(bill.bill.payment_url).not.toBe(firstPayment);
     await expect(showing(tenant, 'Payment uploaded.')).toBeVisible();
@@ -181,13 +192,14 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
     await page.waitForTimeout(1_100);
     await page.getByTestId(`bill-edit-${data.tenant}`).click();
     const photo = noisePng(1800, 1200);
-    await attachFile('receipt', photo, 'receipt-2');
+    // Pasted (Ctrl+V of a copied picture) instead of picked.
+    await attachFile('receipt', photo, 'receipt-2', { paste: true });
     const bill = await saveWithReceipt(photo);
     expect(bill.bill.receipt_url).not.toBe(firstReceipt);
     await expect.poll(status).toContain('Paid');
   });
 
-  await test.step('remove the payment in Update Bill', async () => {
+  await test.step('once Paid, the payment can no longer be removed; a picture in the chooser can be removed before saving', async () => {
     // Billing Details only views; the Update Bill form attaches, changes and removes the receipt and the payment.
     await page.getByTestId(`bill-total-${data.tenant}`).click();
     await expect(page.getByTestId('bill-details-status')).toBeVisible();
@@ -198,23 +210,25 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
 
     await page.getByTestId(`bill-edit-${data.tenant}`).click();
     await expect(page.getByTestId('bill-remove-receipt')).toBeVisible();
-    await page.getByTestId('bill-remove-payment').click();
-    const cleared = page.waitForResponse((r) => r.url().endsWith('/payment') && r.request().method() === 'DELETE');
-    await page.getByTestId('bill-save').click();
-    const response = await cleared;
-    expect(response.status()).toBe(200);
-    const bill = await response.json();
-    expect(bill.bill.payment_url).toBeNull();
-    expect(bill.bill.paid).toBe(true);
+    await expect(page.getByTestId('bill-remove-payment')).toHaveCount(0);
+
+    // The chooser previews a pasted picture; Remove clears it, leaving nothing to save.
+    await page.getByTestId('bill-attach-payment').click();
+    await pasteInto(page, { name: 'other.png', mimeType: 'image/png', buffer: noisePng(200, 200) });
+    await page.getByTestId('attach-remove').click();
+    await expect(page.getByTestId('attach-preview')).toHaveCount(0);
+    await expect(page.getByTestId('attach-save').getByRole('button')).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('attach-choose-file')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Close' }).click();
+    await expect(page.getByTestId('bill-remove-receipt')).toHaveCount(0);
     await expect.poll(status).toContain('Paid');
   });
 
   await test.step('payment QR code', async () => {
     await openPage(page, 'Payment QR Codes');
-    const chooser = page.waitForEvent('filechooser');
-    await page.getByTestId('payment-replace-gcash').click();
     const upload = page.waitForResponse((r) => /\/api\/payment-methods\/\d+\/image$/.test(r.url()) && r.request().method() === 'PUT');
-    await (await chooser).setFiles({ name: 'gcash.png', mimeType: 'image/png', buffer: noisePng(300, 300) });
+    await chooseFile(page, page.getByTestId('payment-replace-gcash'), { name: 'gcash.png', mimeType: 'image/png', buffer: noisePng(300, 300) });
     // Converted to PNG in the browser (the server takes nothing else).
     const response = await upload;
     expect(response.status()).toBe(200);
@@ -229,9 +243,7 @@ test('admin creates a room, tenant, reading and a bill with a payment, the tenan
     await typeInto(page, 'payment-method-name', data.paymentMethod.name);
     await typeInto(page, 'payment-method-account-name', data.paymentMethod.accountName);
     await typeInto(page, 'payment-method-account-number', data.paymentMethod.accountNumber);
-    const chooser = page.waitForEvent('filechooser');
-    await page.getByTestId('payment-method-attach-qr').click();
-    await (await chooser).setFiles({ name: 'bank.png', mimeType: 'image/png', buffer: noisePng(240, 240) });
+    await chooseFile(page, page.getByTestId('payment-method-attach-qr'), { name: 'bank.png', mimeType: 'image/png', buffer: noisePng(240, 240) });
     await expect(showing(page, 'Ready to upload')).toBeVisible();
     const created = page.waitForResponse((r) => r.url().endsWith('/api/payment-methods') && r.request().method() === 'POST');
     const uploaded = page.waitForResponse((r) => /\/api\/payment-methods\/\d+\/image$/.test(r.url()) && r.request().method() === 'PUT');

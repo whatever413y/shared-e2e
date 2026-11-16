@@ -163,3 +163,46 @@ export function noisePng(width: number, height: number): Buffer {
     chunk('IEND', Buffer.alloc(0)),
   ]);
 }
+
+/** A file for [chooseFile] / [pasteFile]. */
+export type UploadFile = { name: string; mimeType: string; buffer: Buffer };
+
+/** Clicks [opener] (an Attach/Upload button), picks [file] in the chooser that opens, and saves it once previewed. */
+export async function chooseFile(page: Page, opener: Locator, file: UploadFile): Promise<void> {
+  await opener.click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByTestId('attach-choose-file').click();
+  await (await chooser).setFiles(file);
+  await saveAttachment(page);
+}
+
+/** Saves the file the chooser shows as its preview. */
+async function saveAttachment(page: Page): Promise<void> {
+  await expect(page.getByTestId('attach-preview')).toBeVisible();
+  await page.getByTestId('attach-save').click();
+}
+
+/**
+ * Clicks [opener] (an Attach/Upload button) and pastes [file] into the chooser that opens, as Ctrl+V of a copied
+ * picture does: a `paste` event carrying the file (no clipboard permission needed); saves it once previewed.
+ */
+export async function pasteFile(page: Page, opener: Locator, file: UploadFile): Promise<void> {
+  await opener.click();
+  await pasteInto(page, file);
+  await saveAttachment(page);
+}
+
+/** Pastes [file] into the open chooser (a `paste` event carrying it, as Ctrl+V does) and waits for its preview. */
+export async function pasteInto(page: Page, file: UploadFile): Promise<void> {
+  await expect(page.getByTestId('attach-choose-file')).toBeVisible();
+  await page.evaluate(
+    ({ name, mimeType, base64 }) => {
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(new File([bytes], name, { type: mimeType }));
+      (document.activeElement ?? document.body).dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+    },
+    { name: file.name, mimeType: file.mimeType, base64: file.buffer.toString('base64') },
+  );
+  await expect(page.getByTestId('attach-preview')).toBeVisible();
+}
