@@ -176,6 +176,19 @@ export async function chooseFile(page: Page, opener: Locator, file: UploadFile):
   await saveAttachment(page);
 }
 
+/**
+ * Clicks [opener] (an Attach/Upload button), picks several [files] at once in the chooser that opens (they show as
+ * numbered thumbnails) and saves them, to be combined into one upload.
+ */
+export async function chooseFiles(page: Page, opener: Locator, files: UploadFile[]): Promise<void> {
+  await opener.click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByTestId('attach-choose-file').click();
+  await (await chooser).setFiles(files);
+  await expect(page.getByTestId(`attach-thumb-${files.length}`)).toBeVisible();
+  await saveAttachment(page);
+}
+
 /** Saves the file the chooser shows as its preview. */
 async function saveAttachment(page: Page): Promise<void> {
   await expect(page.getByTestId('attach-preview')).toBeVisible();
@@ -194,7 +207,8 @@ export async function pasteFile(page: Page, opener: Locator, file: UploadFile): 
 
 /** Pastes [file] into the open chooser (a `paste` event carrying it, as Ctrl+V does) and waits for its preview. */
 export async function pasteInto(page: Page, file: UploadFile): Promise<void> {
-  await expect(page.getByTestId('attach-choose-file')).toBeVisible();
+  // The chooser is open (its area gives way to thumbnails once it holds two pictures).
+  await expect(page.getByTestId('attach-save')).toBeVisible();
   await page.evaluate(
     ({ name, mimeType, base64 }) => {
       const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));

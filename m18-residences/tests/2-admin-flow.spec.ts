@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, type Response, test } from '@playwright/test';
 import { admin } from '../env.mjs';
-import { adminHome, chooseFile, data, loginAsAdmin, loginAsTenant, noisePng, openPage, pasteFile, pasteInto, pickOption, semanticsText, showing, typeInto } from './helpers';
+import { adminHome, chooseFile, chooseFiles, data, loginAsAdmin, loginAsTenant, noisePng, openPage, pasteFile, pasteInto, pickOption, semanticsText, showing, typeInto } from './helpers';
 
 // One admin session builds the data the tenant spec checks: room → tenant → reading → bill.
 test.describe.configure({ mode: 'serial' });
@@ -150,10 +150,15 @@ test('admin creates a room, tenant, reading and a bill with a payment and remove
     await expect(tenant.getByTestId('tenant-receipt-link')).toHaveCount(0);
     await expect(tenant.getByTestId('tenant-payment-link')).toHaveCount(0);
 
-    const photo = noisePng(1800, 1200);
+    // Two screenshots picked at once: combined into one WebP in the browser, one upload.
+    const shots = [noisePng(1200, 1800), noisePng(1200, 900)];
     const upload = tenant.waitForResponse((r) => r.url().endsWith('/payment') && r.request().method() === 'PUT');
-    await chooseFile(tenant, tenant.getByTestId('tenant-upload-payment'), { name: 'gcash-screenshot.png', mimeType: 'image/png', buffer: photo });
-    const bill = await sentAsWebp(await upload, photo);
+    await chooseFiles(
+      tenant,
+      tenant.getByTestId('tenant-upload-payment'),
+      shots.map((buffer, i) => ({ name: `gcash-screenshot-${i + 1}.png`, mimeType: 'image/png', buffer })),
+    );
+    const bill = await sentAsWebp(await upload, Buffer.concat(shots));
     expect(bill.bill.payment_url).not.toBe(firstPayment);
     await expect(showing(tenant, 'Payment uploaded.')).toBeVisible();
 
@@ -194,9 +199,15 @@ test('admin creates a room, tenant, reading and a bill with a payment and remove
     await page.waitForTimeout(1_100);
     await page.getByTestId(`bill-edit-${data.tenant}`).click();
     const photo = noisePng(1800, 1200);
-    // Pasted (Ctrl+V of a copied picture) instead of picked.
-    await attachFile('receipt', photo, 'receipt-2', { paste: true });
-    const bill = await saveWithReceipt(photo);
+    // Two pictures pasted (Ctrl+V of a copied picture) one after the other: combined into one receipt.
+    await page.getByTestId('bill-attach-receipt').click();
+    await pasteInto(page, { name: 'receipt-2.png', mimeType: 'image/png', buffer: photo });
+    const second = noisePng(800, 600);
+    await pasteInto(page, { name: 'receipt-2b.png', mimeType: 'image/png', buffer: second });
+    await expect(page.getByTestId('attach-thumb-2')).toBeVisible();
+    await page.getByTestId('attach-save').click();
+    await expect.poll(() => semanticsText(page.getByTestId('bill-receipt-file'))).toContain('receipt-2-and-1-more.webp');
+    const bill = await saveWithReceipt(Buffer.concat([photo, second]));
     expect(bill.bill.receipt_url).not.toBe(firstReceipt);
     await expect.poll(status).toContain('Paid');
   });
