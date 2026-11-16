@@ -9,6 +9,8 @@ test('admin creates a room, tenant, reading and a bill with a payment and remove
   page,
   browser,
 }) => {
+  // The whole admin story in one test (~1 min locally, over 2 min on CI runners): more than the default 120 s.
+  test.setTimeout(240_000);
   await loginAsAdmin(page, admin.username, admin.password);
   await expect(adminHome(page)).toBeVisible();
 
