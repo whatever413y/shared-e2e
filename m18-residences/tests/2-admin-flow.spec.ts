@@ -67,14 +67,10 @@ test('admin creates a room, tenant, reading and a bill with a payment and remove
     await expect(showing(page, data.tenant)).toBeVisible();
   });
 
-  // TRANSITIONAL: whether the admin app under test has the attach chooser (shared 0.11). The deploy gates run these
-  // specs against the other apps' `live`, which may be the older app until every repo has shipped it.
-  let adminHasChooser = false;
-
   /** Picks (or with [paste], pastes) [photo] with the `bill-attach-<kind>` button and waits until it is converted to WebP. */
   async function attachFile(kind: 'receipt' | 'payment', photo: Buffer, name: string, { paste = false } = {}) {
     const file = { name: `${name}.png`, mimeType: 'image/png', buffer: photo };
-    adminHasChooser = await (paste ? pasteFile : chooseFile)(page, page.getByTestId(`bill-attach-${kind}`), file);
+    await (paste ? pasteFile : chooseFile)(page, page.getByTestId(`bill-attach-${kind}`), file);
     // Shrunk to 1600 px and re-encoded as WebP before upload; the dialog shows the new name and size.
     await expect.poll(() => semanticsText(page.getByTestId(`bill-${kind}-file`))).toContain(`${name}.webp`);
   }
@@ -214,19 +210,16 @@ test('admin creates a room, tenant, reading and a bill with a payment and remove
 
     await page.getByTestId(`bill-edit-${data.tenant}`).click();
     await expect(page.getByTestId('bill-remove-receipt')).toBeVisible();
-    // TRANSITIONAL: only the admin app with the chooser has these (an older one may be live; see adminHasChooser).
-    if (adminHasChooser) {
-      await expect(page.getByTestId('bill-remove-payment')).toHaveCount(0);
+    await expect(page.getByTestId('bill-remove-payment')).toHaveCount(0);
 
-      // The chooser previews a pasted picture; Remove clears it, leaving nothing to save.
-      await page.getByTestId('bill-attach-payment').click();
-      await pasteInto(page, { name: 'other.png', mimeType: 'image/png', buffer: noisePng(200, 200) });
-      await page.getByTestId('attach-remove').click();
-      await expect(page.getByTestId('attach-preview')).toHaveCount(0);
-      await expect(page.getByTestId('attach-save').getByRole('button')).toBeDisabled();
-      await page.keyboard.press('Escape');
-      await expect(page.getByTestId('attach-choose-file')).toHaveCount(0);
-    }
+    // The chooser previews a pasted picture; Remove clears it, leaving nothing to save.
+    await page.getByTestId('bill-attach-payment').click();
+    await pasteInto(page, { name: 'other.png', mimeType: 'image/png', buffer: noisePng(200, 200) });
+    await page.getByTestId('attach-remove').click();
+    await expect(page.getByTestId('attach-preview')).toHaveCount(0);
+    await expect(page.getByTestId('attach-save').getByRole('button')).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('attach-choose-file')).toHaveCount(0);
     await page.getByRole('button', { name: 'Close' }).click();
     await expect(page.getByTestId('bill-remove-receipt')).toHaveCount(0);
     await expect.poll(status).toContain('Paid');
