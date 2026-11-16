@@ -47,6 +47,8 @@ export function serverVars() {
     ADMIN_PASSWORD: admin.password,
     ALLOWED_ORIGINS: `http://localhost:${ports.admin},http://localhost:${ports.tenant}`,
     TURNSTILE_SECRET: turnstile.secret,
+    // No admin notices from test runs.
+    DISCORD_WEBHOOK_URL: 'off',
   };
 }
 
